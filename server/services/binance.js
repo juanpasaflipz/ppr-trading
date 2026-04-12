@@ -1,8 +1,13 @@
 import EventEmitter from 'events';
 import WebSocket from 'ws';
 
-const BINANCE_REST_BASE = 'https://api.binance.com';
-const BINANCE_WS_BASE = 'wss://stream.binance.com:9443/ws';
+const BINANCE_PUBLIC_REST_BASES = [
+  'https://data-api.binance.vision',
+  'https://api-gcp.binance.com',
+  'https://api.binance.com',
+];
+const BINANCE_WS_BASE = 'wss://data-stream.binance.vision/ws';
+const BINANCE_STREAM_BASE = 'wss://data-stream.binance.vision/stream';
 const BINANCE_FUTURES_REST = 'https://fapi.binance.com';
 const BINANCE_FUTURES_WS = 'wss://fstream.binance.com/ws';
 
@@ -34,17 +39,31 @@ class BinanceService extends EventEmitter {
     return res.json();
   }
 
+  async fetchPublicJSON(path) {
+    let lastError = null;
+
+    for (const base of BINANCE_PUBLIC_REST_BASES) {
+      try {
+        return await this.fetchJSON(`${base}${path}`);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error(`Failed to fetch Binance public data for ${path}`);
+  }
+
   // REST API Methods
   async getExchangeInfo() {
-    return this.fetchJSON(`${BINANCE_REST_BASE}/api/v3/exchangeInfo`);
+    return this.fetchPublicJSON('/api/v3/exchangeInfo');
   }
 
   async getTicker(symbol) {
-    return this.fetchJSON(`${BINANCE_REST_BASE}/api/v3/ticker/24hr?symbol=${symbol}`);
+    return this.fetchPublicJSON(`/api/v3/ticker/24hr?symbol=${symbol}`);
   }
 
   async getAllTickers() {
-    return this.fetchJSON(`${BINANCE_REST_BASE}/api/v3/ticker/24hr`);
+    return this.fetchPublicJSON('/api/v3/ticker/24hr');
   }
 
   async getPrice(symbol) {
@@ -52,21 +71,21 @@ class BinanceService extends EventEmitter {
     if (cached && Date.now() - cached.timestamp < 5000) {
       return cached.price;
     }
-    const data = await this.fetchJSON(`${BINANCE_REST_BASE}/api/v3/ticker/price?symbol=${symbol}`);
+    const data = await this.fetchPublicJSON(`/api/v3/ticker/price?symbol=${symbol}`);
     const price = parseFloat(data.price);
     this.prices.set(symbol, { price, timestamp: Date.now() });
     return price;
   }
 
   async getOrderBook(symbol, limit = 20) {
-    return this.fetchJSON(`${BINANCE_REST_BASE}/api/v3/depth?symbol=${symbol}&limit=${limit}`);
+    return this.fetchPublicJSON(`/api/v3/depth?symbol=${symbol}&limit=${limit}`);
   }
 
   async getCandles(symbol, interval = '1h', limit = 500, startTime, endTime) {
-    let url = `${BINANCE_REST_BASE}/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+    let url = `/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
     if (startTime) url += `&startTime=${startTime}`;
     if (endTime) url += `&endTime=${endTime}`;
-    const data = await this.fetchJSON(url);
+    const data = await this.fetchPublicJSON(url);
     return data.map(k => ({
       openTime: k[0],
       open: parseFloat(k[1]),
@@ -137,7 +156,7 @@ class BinanceService extends EventEmitter {
   // WebSocket Methods
   connectPriceStream(pairs = DEFAULT_PAIRS) {
     const streams = pairs.map(p => `${p.toLowerCase()}@ticker`).join('/');
-    const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
+    const url = `${BINANCE_STREAM_BASE}?streams=${streams}`;
 
     this.ws = new WebSocket(url);
 
