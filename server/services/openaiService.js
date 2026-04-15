@@ -41,8 +41,10 @@ class OpenAIService {
       },
       body: JSON.stringify({
         model: selectedModel,
-        instructions: `${instructions}\n\nRespond with valid JSON.`,
-        input,
+        instructions,
+        input: [
+          { role: 'user', content: `${typeof input === 'string' ? input : JSON.stringify(input)}\n\nRespond in JSON format.` },
+        ],
         text: {
           format: {
             type: 'json_object',
