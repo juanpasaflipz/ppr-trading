@@ -16,6 +16,15 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.post('/arena', async (req, res) => {
+  try {
+    const result = await backtester.runArena(req.body);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.get('/results', (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;

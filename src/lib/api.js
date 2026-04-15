@@ -93,6 +93,7 @@ export const api = {
   // Backtest
   getBacktestStrategies: () => request('/backtest/strategies'),
   runBacktest: (data) => request('/backtest', { method: 'POST', body: JSON.stringify(data) }),
+  runArenaBacktest: (data) => request('/backtest/arena', { method: 'POST', body: JSON.stringify(data) }),
   getBacktestResults: () => request('/backtest/results'),
   getBacktestResult: (id) => request(`/backtest/results/${id}`),
 };
