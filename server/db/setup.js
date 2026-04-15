@@ -72,7 +72,7 @@ function seed() {
     ['daily_loss_limit', '10000'],
     ['max_leverage', '125'],
     ['llm_provider', 'openai'],
-    ['llm_model', process.env.OPENAI_DEFAULT_MODEL || 'gpt-5-mini'],
+    ['llm_model', process.env.OPENAI_DEFAULT_MODEL || 'gpt-5.4'],
   ];
 
   const insertConfig = db.prepare(

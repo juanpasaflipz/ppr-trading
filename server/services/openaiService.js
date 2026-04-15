@@ -1,4 +1,4 @@
-const DEFAULT_MODELS = ['gpt-5.2', 'gpt-5', 'gpt-5-mini', 'gpt-4.1'];
+const DEFAULT_MODELS = ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano'];
 
 function getAvailableModels() {
   const envModels = (process.env.OPENAI_AVAILABLE_MODELS || '')
@@ -10,7 +10,7 @@ function getAvailableModels() {
 }
 
 function getDefaultModel() {
-  return process.env.OPENAI_DEFAULT_MODEL || getAvailableModels()[0] || 'gpt-5-mini';
+  return process.env.OPENAI_DEFAULT_MODEL || getAvailableModels()[0] || 'gpt-5.4-mini';
 }
 
 class OpenAIService {

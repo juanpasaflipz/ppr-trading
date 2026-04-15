@@ -21,7 +21,7 @@ export default function SettingsPage() {
         daily_loss_limit: config.daily_loss_limit || '10000',
         max_leverage: config.max_leverage || '125',
         llm_provider: config.llm_provider || 'openai',
-        llm_model: config.llm_model || config.llm_available_models?.[0] || 'gpt-5-mini',
+        llm_model: config.llm_model || config.llm_available_models?.[0] || 'gpt-5.4',
       });
     }
   }, [config]);
