@@ -82,17 +82,34 @@ function seed() {
     insertConfig.run(key, value);
   }
 
-  // Seed starting USDT balance in spot wallet
-  const existing = db.prepare(
+  // Seed starting USDT balance split 50/50 between spot and futures
+  const halfBalance = STARTING_BALANCE / 2;
+  const existingSpot = db.prepare(
     "SELECT id FROM wallets WHERE type = 'spot' AND asset = 'USDT'"
   ).get();
-  if (!existing) {
+  if (!existingSpot) {
     db.prepare(
       "INSERT INTO wallets (type, asset, balance) VALUES ('spot', 'USDT', ?)"
-    ).run(STARTING_BALANCE);
+    ).run(halfBalance);
     db.prepare(
-      "INSERT INTO wallets (type, asset, balance) VALUES ('futures', 'USDT', 0)"
-    ).run();
+      "INSERT INTO wallets (type, asset, balance) VALUES ('futures', 'USDT', ?)"
+    ).run(halfBalance);
+  } else {
+    // Migrate: if futures wallet is 0 and no trades exist, split the balance
+    const futuresWallet = db.prepare(
+      "SELECT * FROM wallets WHERE type = 'futures' AND asset = 'USDT'"
+    ).get();
+    const tradeCount = db.prepare('SELECT COUNT(*) as cnt FROM trades').get().cnt;
+    if (futuresWallet && futuresWallet.balance === 0 && tradeCount === 0) {
+      const spotWallet = db.prepare(
+        "SELECT * FROM wallets WHERE type = 'spot' AND asset = 'USDT'"
+      ).get();
+      db.prepare("UPDATE wallets SET balance = ? WHERE type = 'spot' AND asset = 'USDT'")
+        .run(spotWallet.balance / 2);
+      db.prepare("UPDATE wallets SET balance = ? WHERE type = 'futures' AND asset = 'USDT'")
+        .run(spotWallet.balance / 2);
+      console.log('[Seed] Migrated balance: split 50/50 between spot and futures');
+    }
   }
 
   // Seed known strategies
