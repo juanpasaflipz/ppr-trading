@@ -41,7 +41,7 @@ class OpenAIService {
       },
       body: JSON.stringify({
         model: selectedModel,
-        instructions,
+        instructions: `${instructions}\n\nRespond with valid JSON.`,
         input,
         text: {
           format: {
