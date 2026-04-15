@@ -1,30 +1,32 @@
 import { Router } from 'express';
 import tradingEngine from '../services/tradingEngine.js';
+import executionRouter from '../services/executionRouter.js';
 import { getDb } from '../db/database.js';
 
 const router = Router();
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const positions = tradingEngine.getOpenPositions();
+    const positions = await tradingEngine.getOpenPositions();
     res.json(positions);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post('/:id/close', (req, res) => {
+router.post('/:id/close', async (req, res) => {
   try {
     const { price } = req.body;
-    const result = tradingEngine.closePosition(parseInt(req.params.id), price);
+    const result = await executionRouter.closePosition(parseInt(req.params.id), price);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-router.put('/:id/leverage', (req, res) => {
+router.put('/:id/leverage', async (req, res) => {
   try {
+    await tradingEngine.syncLiveFuturesPositions();
     const db = getDb();
     const { leverage } = req.body;
     const pos = db.prepare('SELECT * FROM positions WHERE id = ?').get(parseInt(req.params.id));
@@ -38,8 +40,9 @@ router.put('/:id/leverage', (req, res) => {
   }
 });
 
-router.put('/:id/margin', (req, res) => {
+router.put('/:id/margin', async (req, res) => {
   try {
+    await tradingEngine.syncLiveFuturesPositions();
     const db = getDb();
     const { amount, action } = req.body; // action: 'add' | 'remove'
     const pos = db.prepare('SELECT * FROM positions WHERE id = ?').get(parseInt(req.params.id));

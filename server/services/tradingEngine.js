@@ -1,6 +1,7 @@
 import { getDb } from '../db/database.js';
 import { v4 as uuidv4 } from 'uuid';
 import binanceService from './binance.js';
+import binanceExecutionService from './binanceExecution.js';
 
 class TradingEngine {
   constructor() {
@@ -75,6 +76,7 @@ class TradingEngine {
 
   // --- Portfolio ---
   async getPortfolio() {
+    await this.syncLiveFuturesPositions();
     const db = getDb();
     const spotWallets = db.prepare("SELECT * FROM wallets WHERE type = 'spot'").all();
     const futuresWallets = db.prepare("SELECT * FROM wallets WHERE type = 'futures'").all();
@@ -131,6 +133,93 @@ class TradingEngine {
       holdings,
       openPositions: openPositions.length,
     };
+  }
+
+  shouldSyncLiveFutures() {
+    return process.env.TRADING_MODE === 'live'
+      && process.env.BINANCE_EXECUTION_ENV === 'live'
+      && process.env.BINANCE_FUTURES_LIVE_ENABLED === 'true'
+      && binanceExecutionService.isConfigured();
+  }
+
+  async syncLiveFuturesPositions() {
+    if (!this.shouldSyncLiveFutures()) return [];
+
+    const db = getDb();
+    const positionRisk = await binanceExecutionService.getFuturesPositionRisk();
+    const openRemote = positionRisk.filter((row) => Number(row.positionAmt) !== 0);
+    const seenKeys = new Set();
+
+    for (const remote of openRemote) {
+      const quantity = Math.abs(Number(remote.positionAmt));
+      const side = Number(remote.positionAmt) > 0 ? 'long' : 'short';
+      const key = `${remote.symbol}:${side}`;
+      seenKeys.add(key);
+
+      const isolatedWallet = Number(remote.isolatedWallet || 0);
+      const notional = Math.abs(Number(remote.notional || 0));
+      const leverage = Number(remote.leverage || 1);
+      const derivedMargin = isolatedWallet > 0 ? isolatedWallet : (leverage > 0 ? notional / leverage : 0);
+      const entryPrice = Number(remote.entryPrice || 0);
+      const liquidationPrice = Number(remote.liquidationPrice || 0);
+      const unrealizedPnl = Number(remote.unRealizedProfit || 0);
+      const marginType = String(remote.marginType || 'isolated').toLowerCase() === 'cross' ? 'cross' : 'isolated';
+
+      const existing = db.prepare(`
+        SELECT * FROM positions
+        WHERE symbol = ? AND side = ? AND status = 'open'
+        ORDER BY id DESC
+        LIMIT 1
+      `).get(remote.symbol, side);
+
+      if (existing) {
+        db.prepare(`
+          UPDATE positions
+          SET entry_price = ?, quantity = ?, leverage = ?, margin = ?, liquidation_price = ?,
+              unrealized_pnl = ?, margin_type = ?
+          WHERE id = ?
+        `).run(
+          entryPrice,
+          quantity,
+          leverage,
+          derivedMargin,
+          liquidationPrice || null,
+          unrealizedPnl,
+          marginType,
+          existing.id
+        );
+      } else {
+        db.prepare(`
+          INSERT INTO positions
+          (symbol, side, entry_price, quantity, leverage, margin, liquidation_price, unrealized_pnl, realized_pnl, status, margin_type)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'open', ?)
+        `).run(
+          remote.symbol,
+          side,
+          entryPrice,
+          quantity,
+          leverage,
+          derivedMargin,
+          liquidationPrice || null,
+          unrealizedPnl,
+          marginType
+        );
+      }
+    }
+
+    const localOpen = db.prepare(`SELECT * FROM positions WHERE status = 'open'`).all();
+    for (const pos of localOpen) {
+      const key = `${pos.symbol}:${pos.side}`;
+      if (!seenKeys.has(key)) {
+        db.prepare(`
+          UPDATE positions
+          SET status = 'closed', closed_at = CURRENT_TIMESTAMP, unrealized_pnl = 0
+          WHERE id = ?
+        `).run(pos.id);
+      }
+    }
+
+    return openRemote;
   }
 
   // --- Order Management ---
@@ -408,7 +497,8 @@ class TradingEngine {
     return { positionId, pnl: netPnl, fee, price, quantity: closeQty };
   }
 
-  closePosition(positionId, price) {
+  async closePosition(positionId, price) {
+    await this.syncLiveFuturesPositions();
     const currentPrice = price || binanceService.getCachedPrice(
       getDb().prepare('SELECT symbol FROM positions WHERE id = ?').get(positionId)?.symbol
     );
@@ -606,7 +696,8 @@ class TradingEngine {
     ).all(limit, offset);
   }
 
-  getOpenPositions() {
+  async getOpenPositions() {
+    await this.syncLiveFuturesPositions();
     const db = getDb();
     const positions = db.prepare("SELECT * FROM positions WHERE status = 'open'").all();
 

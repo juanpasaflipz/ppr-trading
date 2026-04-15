@@ -16,6 +16,9 @@ router.get('/', (req, res) => {
     res.json({
       ...config,
       trading_mode: executionRouter.getMode(),
+      binance_execution_env: executionRouter.getExecutionEnv(),
+      binance_live_trading_enabled: process.env.BINANCE_LIVE_TRADING_ENABLED === 'true',
+      binance_futures_live_enabled: process.env.BINANCE_FUTURES_LIVE_ENABLED === 'true',
       binance_connected: binanceService.isConnected,
       binance_status: binanceService.getStatus(),
       llm_enabled: openaiService.isConfigured(),

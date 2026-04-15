@@ -63,6 +63,8 @@ function seed() {
   // Seed default config
   const configs = [
     ['trading_mode', 'paper'],
+    ['binance_execution_env', process.env.BINANCE_EXECUTION_ENV || 'testnet'],
+    ['binance_futures_live_enabled', process.env.BINANCE_FUTURES_LIVE_ENABLED || 'false'],
     ['starting_balance', String(STARTING_BALANCE)],
     ['maker_fee', process.env.MAKER_FEE || '0.001'],
     ['taker_fee', process.env.TAKER_FEE || '0.001'],
