@@ -25,6 +25,7 @@ import positionRoutes from './routes/positions.js';
 import tradeRoutes from './routes/trades.js';
 import webhookRoutes from './routes/webhook.js';
 import strategyRoutes from './routes/strategies.js';
+import strategyLabRoutes from './routes/strategyLab.js';
 import backtestRoutes from './routes/backtest.js';
 import configRoutes from './routes/config.js';
 
@@ -53,6 +54,7 @@ app.use('/api/positions', positionRoutes);
 app.use('/api/trades', tradeRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/strategies', strategyRoutes);
+app.use('/api/strategy-lab', strategyLabRoutes);
 app.use('/api/backtest', backtestRoutes);
 app.use('/api/config', configRoutes);
 

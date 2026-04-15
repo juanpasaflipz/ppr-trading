@@ -1,7 +1,7 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import {
   BarChart3, Wallet, History, Lightbulb, FlaskConical, Bell, Settings,
-  Wifi, WifiOff, Zap, TrendingUp
+  Wifi, WifiOff, Zap, TrendingUp, BrainCircuit
 } from 'lucide-react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useToast } from './hooks/useToast';
@@ -15,6 +15,7 @@ import TradeHistory from './pages/TradeHistory';
 import StrategyDiscovery from './pages/StrategyDiscovery';
 import Backtesting from './pages/Backtesting';
 import AlertsWebhooks from './pages/AlertsWebhooks';
+import StrategyLab from './pages/StrategyLab';
 import SettingsPage from './pages/Settings';
 
 export const AppContext = createContext();
@@ -28,6 +29,7 @@ const TABS = [
   { id: 'portfolio', label: 'Portfolio', icon: Wallet },
   { id: 'history', label: 'History', icon: History },
   { id: 'strategies', label: 'Strategies', icon: Lightbulb },
+  { id: 'lab', label: 'Strategy Lab', icon: BrainCircuit },
   { id: 'backtest', label: 'Backtest', icon: FlaskConical },
   { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'settings', label: 'Settings', icon: Settings },
@@ -57,9 +59,10 @@ export default function App() {
       if (e.key === '2') setActiveTab('portfolio');
       if (e.key === '3') setActiveTab('history');
       if (e.key === '4') setActiveTab('strategies');
-      if (e.key === '5') setActiveTab('backtest');
-      if (e.key === '6') setActiveTab('alerts');
-      if (e.key === '7') setActiveTab('settings');
+      if (e.key === '5') setActiveTab('lab');
+      if (e.key === '6') setActiveTab('backtest');
+      if (e.key === '7') setActiveTab('alerts');
+      if (e.key === '8') setActiveTab('settings');
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -136,6 +139,7 @@ export default function App() {
           {activeTab === 'portfolio' && <Portfolio />}
           {activeTab === 'history' && <TradeHistory />}
           {activeTab === 'strategies' && <StrategyDiscovery />}
+          {activeTab === 'lab' && <StrategyLab />}
           {activeTab === 'backtest' && <Backtesting />}
           {activeTab === 'alerts' && <AlertsWebhooks />}
           {activeTab === 'settings' && <SettingsPage />}

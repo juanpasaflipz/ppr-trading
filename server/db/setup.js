@@ -1,12 +1,64 @@
 import { getDb, closeDb } from './database.js';
 import dotenv from 'dotenv';
+import strategyRegistry from '../services/strategyRegistry.js';
 
 dotenv.config();
 
 const STARTING_BALANCE = parseFloat(process.env.STARTING_BALANCE || '100000');
 
+function ensureStrategyLabMigrations(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS strategy_families (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      source_kind TEXT NOT NULL CHECK(source_kind IN ('tradingview', 'manual', 'internal')),
+      source_url TEXT,
+      source_author TEXT,
+      import_run_id INTEGER REFERENCES strategy_import_runs(id) ON DELETE SET NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  const columns = db.prepare(`PRAGMA table_info(strategies_v2)`).all();
+  const names = new Set(columns.map((column) => column.name));
+  const alterStatements = [];
+
+  if (!names.has('family_id')) {
+    alterStatements.push(`ALTER TABLE strategies_v2 ADD COLUMN family_id INTEGER REFERENCES strategy_families(id) ON DELETE SET NULL`);
+  }
+  if (!names.has('variant_label')) {
+    alterStatements.push(`ALTER TABLE strategies_v2 ADD COLUMN variant_label TEXT`);
+  }
+  if (!names.has('parent_strategy_id')) {
+    alterStatements.push(`ALTER TABLE strategies_v2 ADD COLUMN parent_strategy_id INTEGER REFERENCES strategies_v2(id) ON DELETE SET NULL`);
+  }
+  if (!names.has('generation')) {
+    alterStatements.push(`ALTER TABLE strategies_v2 ADD COLUMN generation INTEGER DEFAULT 0`);
+  }
+  if (!names.has('family_role')) {
+    alterStatements.push(`ALTER TABLE strategies_v2 ADD COLUMN family_role TEXT DEFAULT 'standalone'`);
+  }
+  if (!names.has('import_run_id')) {
+    alterStatements.push(`ALTER TABLE strategies_v2 ADD COLUMN import_run_id INTEGER REFERENCES strategy_import_runs(id) ON DELETE SET NULL`);
+  }
+
+  for (const statement of alterStatements) {
+    db.exec(statement);
+  }
+
+  const familyColumns = db.prepare(`PRAGMA table_info(strategy_families)`).all();
+  const familyNames = new Set(familyColumns.map((column) => column.name));
+  if (!familyNames.has('active_strategy_id')) {
+    db.exec(`ALTER TABLE strategy_families ADD COLUMN active_strategy_id INTEGER REFERENCES strategies_v2(id) ON DELETE SET NULL`);
+  }
+
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_strategies_v2_family ON strategies_v2(family_id, updated_at)`);
+}
+
 function seed() {
   const db = getDb();
+  ensureStrategyLabMigrations(db);
 
   // Seed default config
   const configs = [
@@ -19,6 +71,8 @@ function seed() {
     ['max_position_size_pct', '25'],
     ['daily_loss_limit', '10000'],
     ['max_leverage', '125'],
+    ['llm_provider', 'openai'],
+    ['llm_model', process.env.OPENAI_DEFAULT_MODEL || 'gpt-5-mini'],
   ];
 
   const insertConfig = db.prepare(
@@ -166,6 +220,8 @@ function seed() {
       "INSERT INTO portfolio_snapshots (total_value_usdt, spot_value, futures_value) VALUES (?, ?, 0)"
     ).run(STARTING_BALANCE, STARTING_BALANCE);
   }
+
+  strategyRegistry.seedDefaults();
 
   console.log('Database setup complete.');
   console.log(`Starting balance: $${STARTING_BALANCE.toLocaleString()} USDT`);

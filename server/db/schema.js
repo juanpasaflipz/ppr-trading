@@ -106,6 +106,120 @@ CREATE TABLE IF NOT EXISTS strategies (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Strategy Lab Registry
+CREATE TABLE IF NOT EXISTS strategies_v2 (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  source_kind TEXT NOT NULL CHECK(source_kind IN ('tradingview', 'internal', 'manual')),
+  source_url TEXT,
+  source_author TEXT,
+  pine_script TEXT,
+  strategy_json TEXT NOT NULL,
+  family_id INTEGER REFERENCES strategy_families(id) ON DELETE SET NULL,
+  parent_strategy_id INTEGER REFERENCES strategies_v2(id) ON DELETE SET NULL,
+  generation INTEGER DEFAULT 0,
+  variant_label TEXT,
+  family_role TEXT DEFAULT 'standalone' CHECK(family_role IN ('standalone', 'parent', 'sibling')),
+  import_run_id INTEGER REFERENCES strategy_import_runs(id) ON DELETE SET NULL,
+  style TEXT NOT NULL CHECK(style IN ('trend', 'mean_reversion', 'breakout', 'scalping', 'market_structure', 'swing')),
+  directionality TEXT NOT NULL CHECK(directionality IN ('long_only', 'short_only', 'long_short')),
+  status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'ready', 'archived')),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Strategy Lab Families
+CREATE TABLE IF NOT EXISTS strategy_families (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  source_kind TEXT NOT NULL CHECK(source_kind IN ('tradingview', 'manual', 'internal')),
+  source_url TEXT,
+  source_author TEXT,
+  import_run_id INTEGER REFERENCES strategy_import_runs(id) ON DELETE SET NULL,
+  active_strategy_id INTEGER REFERENCES strategies_v2(id) ON DELETE SET NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Strategy Lab Import Runs
+CREATE TABLE IF NOT EXISTS strategy_import_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_kind TEXT NOT NULL CHECK(source_kind IN ('tradingview', 'manual')),
+  source_url TEXT,
+  source_author TEXT,
+  model TEXT,
+  raw_input_json TEXT NOT NULL,
+  metadata_json TEXT,
+  normalization_json TEXT,
+  selected_variant_index INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Strategy Lab Evaluations
+CREATE TABLE IF NOT EXISTS strategy_evaluations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  strategy_id INTEGER NOT NULL REFERENCES strategies_v2(id) ON DELETE CASCADE,
+  symbol TEXT NOT NULL,
+  timeframe TEXT NOT NULL,
+  start_date TEXT,
+  end_date TEXT,
+  evaluation_type TEXT NOT NULL CHECK(evaluation_type IN ('backtest', 'walk_forward', 'sensitivity', 'forward_review')),
+  score_total REAL,
+  score_stability REAL,
+  score_portability REAL,
+  score_regime_fit REAL,
+  score_execution_realism REAL,
+  summary_json TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Strategy Lab Regime Stats
+CREATE TABLE IF NOT EXISTS strategy_regime_stats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  evaluation_id INTEGER NOT NULL REFERENCES strategy_evaluations(id) ON DELETE CASCADE,
+  regime TEXT NOT NULL,
+  trade_count INTEGER DEFAULT 0,
+  win_rate REAL,
+  net_profit REAL,
+  profit_factor REAL,
+  max_drawdown REAL
+);
+
+-- Strategy Lab Parameter Tests
+CREATE TABLE IF NOT EXISTS strategy_param_tests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  evaluation_id INTEGER NOT NULL REFERENCES strategy_evaluations(id) ON DELETE CASCADE,
+  param_name TEXT NOT NULL,
+  param_value TEXT NOT NULL,
+  net_profit REAL,
+  profit_factor REAL,
+  max_drawdown REAL,
+  sharpe_ratio REAL
+);
+
+-- Strategy Lab Coach Reports
+CREATE TABLE IF NOT EXISTS coach_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  strategy_id INTEGER NOT NULL REFERENCES strategies_v2(id) ON DELETE CASCADE,
+  evaluation_id INTEGER REFERENCES strategy_evaluations(id) ON DELETE SET NULL,
+  report_json TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Strategy Lab Forward Runs
+CREATE TABLE IF NOT EXISTS forward_strategy_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  strategy_id INTEGER NOT NULL REFERENCES strategies_v2(id) ON DELETE CASCADE,
+  symbol TEXT NOT NULL,
+  timeframe TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'running', 'stopped', 'invalidated', 'completed')),
+  started_at DATETIME,
+  ended_at DATETIME,
+  expected_profile_json TEXT,
+  actual_profile_json TEXT
+);
+
 -- Backtest Results
 CREATE TABLE IF NOT EXISTS backtest_results (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -161,6 +275,13 @@ CREATE INDEX IF NOT EXISTS idx_trades_executed_at ON trades(executed_at);
 CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_at ON portfolio_snapshots(snapshot_at);
 CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
 CREATE INDEX IF NOT EXISTS idx_strategies_score ON strategies(composite_score);
+CREATE INDEX IF NOT EXISTS idx_strategies_v2_slug ON strategies_v2(slug);
+CREATE INDEX IF NOT EXISTS idx_strategies_v2_status ON strategies_v2(status);
+CREATE INDEX IF NOT EXISTS idx_strategy_families_source ON strategy_families(source_kind, updated_at);
+CREATE INDEX IF NOT EXISTS idx_strategy_import_runs_source ON strategy_import_runs(source_kind, created_at);
+CREATE INDEX IF NOT EXISTS idx_strategy_evaluations_strategy ON strategy_evaluations(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_coach_reports_strategy ON coach_reports(strategy_id);
+CREATE INDEX IF NOT EXISTS idx_forward_strategy_runs_strategy ON forward_strategy_runs(strategy_id);
 `;
 
 export default SCHEMA;

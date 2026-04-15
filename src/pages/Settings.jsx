@@ -20,6 +20,8 @@ export default function SettingsPage() {
         max_position_size_pct: config.max_position_size_pct || '25',
         daily_loss_limit: config.daily_loss_limit || '10000',
         max_leverage: config.max_leverage || '125',
+        llm_provider: config.llm_provider || 'openai',
+        llm_model: config.llm_model || config.llm_available_models?.[0] || 'gpt-5-mini',
       });
     }
   }, [config]);
@@ -181,6 +183,45 @@ export default function SettingsPage() {
           <span className="text-slate-400">
             Binance: {config?.binance_connected ? 'Connected' : 'Not connected'}
             {config?.binance_status?.trackedPairs > 0 && ` (${config.binance_status.trackedPairs} pairs)`}
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-[#12151a] rounded-lg p-4 border border-slate-800/50">
+        <div className="flex items-center gap-3 mb-3">
+          <Palette size={18} className="text-emerald-400" />
+          <h3 className="text-sm font-semibold">AI Strategy Suggestions</h3>
+        </div>
+        <p className="text-xs text-slate-500 mb-3">
+          OpenAI-powered proposal generation is optional and uses the server-side <code className="bg-slate-800 px-1 rounded">OPENAI_API_KEY</code>.
+          The deterministic analyzer and recommender still run even when AI is disabled.
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Provider</label>
+            <input
+              value={form.llm_provider || 'openai'}
+              readOnly
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-400"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Default Model</label>
+            <select
+              value={form.llm_model || ''}
+              onChange={e => setForm({ ...form, llm_model: e.target.value })}
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white"
+            >
+              {(config?.llm_available_models || []).map((model) => (
+                <option key={model} value={model}>{model}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs mt-3">
+          <div className={`w-2 h-2 rounded-full ${config?.llm_enabled ? 'bg-emerald-400' : 'bg-red-400'}`} />
+          <span className="text-slate-400">
+            OpenAI: {config?.llm_enabled ? 'Configured' : 'Not configured'}
           </span>
         </div>
       </div>

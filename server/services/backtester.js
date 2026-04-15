@@ -192,26 +192,24 @@ class Backtester {
     return results;
   }
 
-  async runBacktest(params) {
+  runStrategySimulation(params) {
     const {
-      strategyId, symbol, timeframe, startDate, endDate,
-      initialCapital = 100000, feeRate = 0.001, slippage = 0.0005,
+      strategy,
+      candles,
+      initialCapital = 100000,
+      feeRate = 0.001,
+      slippage = 0.0005,
     } = params;
 
-    const strategy = BUILT_IN_STRATEGIES[strategyId];
-    if (!strategy) throw new Error(`Strategy '${strategyId}' not found`);
+    if (!strategy?.entry || !strategy?.exit) {
+      throw new Error('Strategy runtime is missing entry/exit rules');
+    }
+    if (!Array.isArray(candles) || candles.length < 50) {
+      throw new Error(`Not enough data: ${candles?.length || 0} candles`);
+    }
 
-    // Fetch historical data
-    console.log(`[Backtest] Fetching ${symbol} ${timeframe} candles from ${startDate} to ${endDate}`);
-    const candles = await binanceService.getHistoricalCandles(symbol, timeframe, startDate, endDate);
-    if (candles.length < 50) throw new Error(`Not enough data: ${candles.length} candles`);
+    const indicators = this.calculateIndicators(candles, strategy.indicators || {});
 
-    console.log(`[Backtest] Running ${strategy.name} on ${candles.length} candles`);
-
-    // Calculate indicators
-    const indicators = this.calculateIndicators(candles, strategy.indicators);
-
-    // Simulate trades
     let capital = initialCapital;
     let position = null;
     const trades = [];
@@ -241,11 +239,10 @@ class Backtester {
       }
 
       if (!position) {
-        // Check entry
         try {
-          if (strategy.entry(candle, ind)) {
+          if (strategy.entry(candle, ind, { candles, indicators, index: i })) {
             const entryPrice = candle.close * (1 + slippage);
-            const positionSize = capital * 0.95; // Use 95% of capital
+            const positionSize = capital * 0.95;
             const quantity = positionSize / entryPrice;
             const fee = positionSize * feeRate;
             capital -= fee;
@@ -254,34 +251,33 @@ class Backtester {
               entryPrice,
               quantity,
               entryTime: candle.openTime,
+              entryIndex: i,
               stopLoss: strategy.riskManagement?.stopLoss ? entryPrice * (1 - strategy.riskManagement.stopLoss) : null,
               takeProfit: strategy.riskManagement?.takeProfit ? entryPrice * (1 + strategy.riskManagement.takeProfit) : null,
             };
           }
-        } catch { /* indicator not ready */ }
+        } catch {
+          // Indicators may not be ready on early bars.
+        }
       } else {
-        // Check exit conditions
         let exitPrice = null;
         let exitReason = '';
 
-        // Stop loss
         if (position.stopLoss && candle.low <= position.stopLoss) {
           exitPrice = position.stopLoss;
           exitReason = 'stop_loss';
-        }
-        // Take profit
-        else if (position.takeProfit && candle.high >= position.takeProfit) {
+        } else if (position.takeProfit && candle.high >= position.takeProfit) {
           exitPrice = position.takeProfit;
           exitReason = 'take_profit';
-        }
-        // Strategy exit
-        else {
+        } else {
           try {
-            if (strategy.exit(candle, ind)) {
+            if (strategy.exit(candle, ind, { candles, indicators, index: i, position })) {
               exitPrice = candle.close * (1 - slippage);
               exitReason = 'signal';
             }
-          } catch { /* indicator not ready */ }
+          } catch {
+            // Indicators may not be ready on early bars.
+          }
         }
 
         if (exitPrice) {
@@ -292,6 +288,8 @@ class Backtester {
           trades.push({
             entryTime: position.entryTime,
             exitTime: candle.openTime,
+            entryIndex: position.entryIndex,
+            exitIndex: i,
             entryPrice: position.entryPrice,
             exitPrice,
             quantity: position.quantity,
@@ -306,7 +304,6 @@ class Backtester {
       }
     }
 
-    // Close any open position at the end
     if (position) {
       const lastCandle = candles[candles.length - 1];
       const exitPrice = lastCandle.close;
@@ -316,6 +313,8 @@ class Backtester {
       trades.push({
         entryTime: position.entryTime,
         exitTime: lastCandle.openTime,
+        entryIndex: position.entryIndex,
+        exitIndex: candles.length - 1,
         entryPrice: position.entryPrice,
         exitPrice,
         quantity: position.quantity,
@@ -326,8 +325,47 @@ class Backtester {
       });
     }
 
-    // Calculate metrics
     const metrics = this._calculateMetrics(trades, initialCapital, capital, maxDrawdown, maxDrawdownPct, equityCurve);
+    const sampledEquityCurve = equityCurve.filter((_, i) => i % Math.max(1, Math.floor(equityCurve.length / 500)) === 0);
+
+    return {
+      ...metrics,
+      maxDrawdown,
+      maxDrawdownPct,
+      trades,
+      equityCurve: sampledEquityCurve,
+      rawEquityCurve: equityCurve,
+      indicators,
+      candles,
+      realisticNetProfit: metrics.netProfit * this.degradationFactor,
+      realisticWinRate: metrics.winRate * this.degradationFactor + (1 - this.degradationFactor) * 50,
+      realisticProfitFactor: metrics.profitFactor * this.degradationFactor + (1 - this.degradationFactor),
+    };
+  }
+
+  async runBacktest(params) {
+    const {
+      strategyId, symbol, timeframe, startDate, endDate,
+      initialCapital = 100000, feeRate = 0.001, slippage = 0.0005,
+    } = params;
+
+    const strategy = BUILT_IN_STRATEGIES[strategyId];
+    if (!strategy) throw new Error(`Strategy '${strategyId}' not found`);
+
+    // Fetch historical data
+    console.log(`[Backtest] Fetching ${symbol} ${timeframe} candles from ${startDate} to ${endDate}`);
+    const candles = await binanceService.getHistoricalCandles(symbol, timeframe, startDate, endDate);
+    if (candles.length < 50) throw new Error(`Not enough data: ${candles.length} candles`);
+
+    console.log(`[Backtest] Running ${strategy.name} on ${candles.length} candles`);
+
+    const simulation = this.runStrategySimulation({
+      strategy,
+      candles,
+      initialCapital,
+      feeRate,
+      slippage,
+    });
 
     // Save to database
     const db = getDb();
@@ -340,13 +378,13 @@ class Backtester {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       strategy.name, symbol, timeframe, startDate, endDate,
-      metrics.totalTrades, metrics.winRate, metrics.netProfit, metrics.netProfitPct,
-      metrics.profitFactor, maxDrawdown, maxDrawdownPct,
-      metrics.sharpeRatio, metrics.sortinoRatio, metrics.avgWin, metrics.avgLoss,
-      metrics.longestWinStreak, metrics.longestLossStreak,
-      JSON.stringify(equityCurve.filter((_, i) => i % Math.max(1, Math.floor(equityCurve.length / 500)) === 0)),
-      metrics.netProfit * this.degradationFactor,
-      metrics.winRate * this.degradationFactor + (1 - this.degradationFactor) * 50,
+      simulation.totalTrades, simulation.winRate, simulation.netProfit, simulation.netProfitPct,
+      simulation.profitFactor, simulation.maxDrawdown, simulation.maxDrawdownPct,
+      simulation.sharpeRatio, simulation.sortinoRatio, simulation.avgWin, simulation.avgLoss,
+      simulation.longestWinStreak, simulation.longestLossStreak,
+      JSON.stringify(simulation.equityCurve),
+      simulation.realisticNetProfit,
+      simulation.realisticWinRate,
       JSON.stringify(params)
     );
 
@@ -357,14 +395,7 @@ class Backtester {
       timeframe,
       startDate,
       endDate,
-      ...metrics,
-      maxDrawdown,
-      maxDrawdownPct,
-      realisticNetProfit: metrics.netProfit * this.degradationFactor,
-      realisticWinRate: metrics.winRate * this.degradationFactor + (1 - this.degradationFactor) * 50,
-      realisticProfitFactor: metrics.profitFactor * this.degradationFactor + (1 - this.degradationFactor),
-      trades,
-      equityCurve: equityCurve.filter((_, i) => i % Math.max(1, Math.floor(equityCurve.length / 500)) === 0),
+      ...simulation,
     };
   }
 

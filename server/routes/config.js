@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getDb } from '../db/database.js';
 import executionRouter from '../services/executionRouter.js';
 import binanceService from '../services/binance.js';
+import openaiService from '../services/openaiService.js';
 
 const router = Router();
 
@@ -17,6 +18,10 @@ router.get('/', (req, res) => {
       trading_mode: executionRouter.getMode(),
       binance_connected: binanceService.isConnected,
       binance_status: binanceService.getStatus(),
+      llm_enabled: openaiService.isConfigured(),
+      llm_provider: config.llm_provider || 'openai',
+      llm_model: config.llm_model || openaiService.getSettings().defaultModel,
+      llm_available_models: openaiService.getSettings().availableModels,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -65,6 +65,31 @@ export const api = {
   getStrategy: (id) => request(`/strategies/${id}`),
   refreshStrategies: () => request('/strategies/refresh', { method: 'POST' }),
 
+  // Strategy Lab
+  getStrategyLabStrategies: (params) => {
+    const qs = new URLSearchParams(params || {}).toString();
+    return request(`/strategy-lab/strategies${qs ? `?${qs}` : ''}`);
+  },
+  getStrategyLabStrategy: (id) => request(`/strategy-lab/strategies/${id}`),
+  getStrategyLabStrategyFamily: (id) => request(`/strategy-lab/strategies/${id}/family`),
+  getStrategyLabFamilyRecommendation: (id, data) => request(`/strategy-lab/strategies/${id}/family/recommendation`, { method: 'POST', body: JSON.stringify(data || {}) }),
+  promoteStrategyLabStrategy: (id) => request(`/strategy-lab/strategies/${id}/promote`, { method: 'POST' }),
+  archiveStrategyLabStrategy: (id) => request(`/strategy-lab/strategies/${id}/archive`, { method: 'POST' }),
+  importStrategyLabStrategy: (data) => request('/strategy-lab/import', { method: 'POST', body: JSON.stringify(data) }),
+  evaluateStrategyLabStrategy: (id, data) => request(`/strategy-lab/strategies/${id}/evaluate`, { method: 'POST', body: JSON.stringify(data || {}) }),
+  getStrategyLabEvaluations: (id, params) => {
+    const qs = new URLSearchParams(params || {}).toString();
+    return request(`/strategy-lab/strategies/${id}/evaluations${qs ? `?${qs}` : ''}`);
+  },
+  getStrategyLabEvaluation: (id) => request(`/strategy-lab/evaluations/${id}`),
+  getStrategyLabRecommendations: (data) => request('/strategy-lab/recommendations', { method: 'POST', body: JSON.stringify(data || {}) }),
+  getStrategyLabLlmSettings: () => request('/strategy-lab/llm/settings'),
+  generateStrategyLabLlmProposals: (data) => request('/strategy-lab/llm/proposals', { method: 'POST', body: JSON.stringify(data || {}) }),
+  normalizeTradingViewStrategy: (data) => request('/strategy-lab/import/tradingview/normalize', { method: 'POST', body: JSON.stringify(data || {}) }),
+  importTradingViewStrategy: (data) => request('/strategy-lab/import/tradingview', { method: 'POST', body: JSON.stringify(data || {}) }),
+  importTradingViewStrategyFamily: (data) => request('/strategy-lab/import/tradingview/family', { method: 'POST', body: JSON.stringify(data || {}) }),
+  generateStrategyLabChildren: (id, data) => request(`/strategy-lab/strategies/${id}/generate-children`, { method: 'POST', body: JSON.stringify(data || {}) }),
+
   // Backtest
   getBacktestStrategies: () => request('/backtest/strategies'),
   runBacktest: (data) => request('/backtest', { method: 'POST', body: JSON.stringify(data) }),
