@@ -223,11 +223,16 @@ function seed() {
 
   strategyRegistry.seedDefaults();
 
-  console.log('Database setup complete.');
-  console.log(`Starting balance: $${STARTING_BALANCE.toLocaleString()} USDT`);
-  console.log(`Seeded ${strategies.length} strategies`);
-
-  closeDb();
+  console.log('[Seed] Database setup complete.');
+  console.log(`[Seed] Starting balance: $${STARTING_BALANCE.toLocaleString()} USDT`);
+  console.log(`[Seed] Seeded ${strategies.length} strategies`);
 }
 
-seed();
+export { seed };
+
+// Run standalone when called directly (node server/db/setup.js)
+import { fileURLToPath } from 'url';
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  seed();
+  closeDb();
+}

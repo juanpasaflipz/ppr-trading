@@ -14,6 +14,7 @@ const distPath = path.join(__dirname, '../dist');
 
 // Import services
 import { getDb } from './db/database.js';
+import { seed } from './db/setup.js';
 import binanceService, { DEFAULT_PAIRS } from './services/binance.js';
 import tradingEngine from './services/tradingEngine.js';
 
@@ -159,9 +160,10 @@ binanceService.on('depth', (depth) => {
 async function start() {
   console.log(`[Server] Starting on port ${PORT} in ${(process.env.TRADING_MODE || 'paper').toUpperCase()} mode`);
 
-  // Init database
+  // Init database and seed defaults
   getDb();
-  console.log('[DB] SQLite initialized');
+  seed();
+  console.log('[DB] SQLite initialized and seeded');
 
   // Connect to Binance
   try {

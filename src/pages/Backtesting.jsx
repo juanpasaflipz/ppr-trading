@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { useApp } from '../App';
 import { formatUSD, formatPercent, formatNumber, pnlColor } from '../lib/format';
-import { Play, Clock, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Play, Clock, TrendingUp, AlertTriangle, FlaskConical } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, AreaChart, Area } from 'recharts';
 
 const PAIRS = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT'];
