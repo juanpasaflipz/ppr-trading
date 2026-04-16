@@ -235,6 +235,10 @@ class BinanceService extends EventEmitter {
     ws.on('close', () => {
       this.klineSubscriptions.delete(key);
     });
+
+    ws.on('error', (err) => {
+      console.error(`[Binance WS] Kline subscription error for ${key}:`, err.message);
+    });
   }
 
   subscribeDepth(symbol) {
@@ -258,6 +262,10 @@ class BinanceService extends EventEmitter {
     ws.on('close', () => {
       // auto-reconnect depth
       setTimeout(() => this.subscribeDepth(symbol), 5000);
+    });
+
+    ws.on('error', (err) => {
+      console.error(`[Binance WS] Depth subscription error for ${key}:`, err.message);
     });
   }
 

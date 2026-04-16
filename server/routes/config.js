@@ -3,6 +3,7 @@ import { getDb } from '../db/database.js';
 import executionRouter from '../services/executionRouter.js';
 import binanceService from '../services/binance.js';
 import openaiService from '../services/openaiService.js';
+import automationService from '../services/automationService.js';
 
 const router = Router();
 
@@ -31,18 +32,24 @@ router.get('/', (req, res) => {
   }
 });
 
-router.put('/', (req, res) => {
+router.put('/', async (req, res) => {
   try {
     const db = getDb();
     const updates = req.body;
     const stmt = db.prepare('INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
+    let shouldRefreshAutomation = false;
 
     for (const [key, value] of Object.entries(updates)) {
       if (key === 'trading_mode') {
-        const result = executionRouter.switchMode(value, updates.confirmation);
+        executionRouter.switchMode(value, updates.confirmation);
         continue;
       }
+      if (key.startsWith('ema_cross_auto_')) shouldRefreshAutomation = true;
       stmt.run(key, String(value));
+    }
+
+    if (shouldRefreshAutomation) {
+      await automationService.refresh();
     }
 
     res.json({ success: true });

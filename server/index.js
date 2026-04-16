@@ -29,6 +29,8 @@ import strategyRoutes from './routes/strategies.js';
 import strategyLabRoutes from './routes/strategyLab.js';
 import backtestRoutes from './routes/backtest.js';
 import configRoutes from './routes/config.js';
+import automationRoutes from './routes/automation.js';
+import automationService from './services/automationService.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -58,6 +60,7 @@ app.use('/api/strategies', strategyRoutes);
 app.use('/api/strategy-lab', strategyLabRoutes);
 app.use('/api/backtest', backtestRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/automation', automationRoutes);
 
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(distPath));
@@ -176,6 +179,7 @@ async function start() {
 
   // Start order monitoring
   tradingEngine.startOrderMonitor();
+  automationService.start();
 
   // Portfolio snapshot every 5 minutes
   cron.schedule('*/5 * * * *', async () => {

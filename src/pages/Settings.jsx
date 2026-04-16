@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { useApp } from '../App';
-import { Save, AlertTriangle, Shield, Sliders, Key, Palette } from 'lucide-react';
+import { Save, AlertTriangle, Shield, Sliders, Key, Palette, Bot } from 'lucide-react';
 
 export default function SettingsPage() {
   const { config, setConfig, addToast } = useApp();
   const [form, setForm] = useState({});
   const [showLiveConfirm, setShowLiveConfirm] = useState(false);
   const [liveConfirmText, setLiveConfirmText] = useState('');
+  const [automationStatus, setAutomationStatus] = useState(null);
 
   useEffect(() => {
     if (config) {
@@ -20,17 +21,28 @@ export default function SettingsPage() {
         max_position_size_pct: config.max_position_size_pct || '25',
         daily_loss_limit: config.daily_loss_limit || '10000',
         max_leverage: config.max_leverage || '125',
+        ema_cross_auto_enabled: config.ema_cross_auto_enabled || 'false',
+        ema_cross_auto_symbol: config.ema_cross_auto_symbol || 'BTCUSDT',
+        ema_cross_auto_timeframe: config.ema_cross_auto_timeframe || '1h',
+        ema_cross_auto_leverage: config.ema_cross_auto_leverage || '3',
+        ema_cross_auto_max_position_pct: config.ema_cross_auto_max_position_pct || '5',
         llm_provider: config.llm_provider || 'openai',
         llm_model: config.llm_model || config.llm_available_models?.[0] || 'gpt-5.4',
       });
     }
   }, [config]);
 
+  useEffect(() => {
+    api.getEmaCrossAutomationStatus().then(setAutomationStatus).catch(() => {});
+  }, []);
+
   const handleSave = async () => {
     try {
       await api.updateConfig(form);
       const updated = await api.getConfig();
       setConfig(updated);
+      const status = await api.getEmaCrossAutomationStatus();
+      setAutomationStatus(status);
       addToast('Settings saved', 'success');
     } catch (err) {
       addToast(err.message, 'error');
@@ -72,6 +84,25 @@ export default function SettingsPage() {
   };
 
   const isLive = config?.trading_mode === 'live';
+
+  const toggleAutomation = async () => {
+    try {
+      const enabled = form.ema_cross_auto_enabled === 'true';
+      const nextEnabled = enabled ? 'false' : 'true';
+      const nextForm = { ...form, ema_cross_auto_enabled: nextEnabled };
+      setForm(nextForm);
+      await api.updateConfig(nextForm);
+      const updated = await api.getConfig();
+      setConfig(updated);
+      const status = nextEnabled === 'true'
+        ? await api.startEmaCrossAutomation()
+        : await api.stopEmaCrossAutomation();
+      setAutomationStatus(status);
+      addToast(nextEnabled === 'true' ? 'EMA futures automation enabled' : 'EMA futures automation disabled', 'success');
+    } catch (err) {
+      addToast(err.message, 'error');
+    }
+  };
 
   return (
     <div className="p-4 max-w-3xl mx-auto space-y-4">
@@ -184,6 +215,73 @@ export default function SettingsPage() {
             Binance: {config?.binance_connected ? 'Connected' : 'Not connected'}
             {config?.binance_status?.trackedPairs > 0 && ` (${config.binance_status.trackedPairs} pairs)`}
           </span>
+        </div>
+      </div>
+
+      <div className="bg-[#12151a] rounded-lg p-4 border border-slate-800/50">
+        <div className="flex items-center gap-3 mb-3">
+          <Bot size={18} className="text-cyan-400" />
+          <h3 className="text-sm font-semibold">EMA Futures Automation</h3>
+        </div>
+        <p className="text-xs text-slate-500 mb-4">
+          Controlled live runner for the built-in EMA 9/21 cross strategy. It watches one symbol and timeframe,
+          opens a futures long on bullish cross, and submits a reduce-only close on bearish cross.
+        </p>
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Symbol</label>
+            <input
+              value={form.ema_cross_auto_symbol || ''}
+              onChange={e => setForm({ ...form, ema_cross_auto_symbol: e.target.value.toUpperCase() })}
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:border-yellow-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Timeframe</label>
+            <select
+              value={form.ema_cross_auto_timeframe || '1h'}
+              onChange={e => setForm({ ...form, ema_cross_auto_timeframe: e.target.value })}
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white"
+            >
+              {['1m', '5m', '15m', '1h', '4h', '1d'].map((tf) => (
+                <option key={tf} value={tf}>{tf}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Automation Leverage</label>
+            <input
+              type="number"
+              value={form.ema_cross_auto_leverage || ''}
+              onChange={e => setForm({ ...form, ema_cross_auto_leverage: e.target.value })}
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:border-yellow-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Max Position Size (%)</label>
+            <input
+              type="number"
+              value={form.ema_cross_auto_max_position_pct || ''}
+              onChange={e => setForm({ ...form, ema_cross_auto_max_position_pct: e.target.value })}
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:border-yellow-500"
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div className="text-xs text-slate-400">
+            <div>Status: {automationStatus?.active ? 'Running' : 'Stopped'}</div>
+            <div>Last candle: {automationStatus?.lastProcessedCloseTime ? new Date(automationStatus.lastProcessedCloseTime).toLocaleString() : 'Never'}</div>
+          </div>
+          <button
+            onClick={toggleAutomation}
+            className={`px-4 py-2 rounded font-semibold text-sm ${
+              form.ema_cross_auto_enabled === 'true'
+                ? 'bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20'
+                : 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/20'
+            }`}
+          >
+            {form.ema_cross_auto_enabled === 'true' ? 'Disable Runner' : 'Enable Runner'}
+          </button>
         </div>
       </div>
 

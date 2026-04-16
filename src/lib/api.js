@@ -96,4 +96,9 @@ export const api = {
   runArenaBacktest: (data) => request('/backtest/arena', { method: 'POST', body: JSON.stringify(data) }),
   getBacktestResults: () => request('/backtest/results'),
   getBacktestResult: (id) => request(`/backtest/results/${id}`),
+
+  // Automation
+  getEmaCrossAutomationStatus: () => request('/automation/ema-cross'),
+  startEmaCrossAutomation: () => request('/automation/ema-cross/start', { method: 'POST' }),
+  stopEmaCrossAutomation: () => request('/automation/ema-cross/stop', { method: 'POST' }),
 };
