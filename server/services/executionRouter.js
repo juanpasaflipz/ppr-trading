@@ -91,6 +91,8 @@ class ExecutionRouter {
     }
 
     if (marketType === 'spot') {
+      binanceExecutionService.assertConfigured();
+      binanceExecutionService.assertProductEnabled('spot');
       const exchangeInfo = await binanceService.getExchangeInfo();
       const currentPrice = await binanceService.getPrice(symbol);
       const remoteOrder = await binanceExecutionService.placeSpotOrder(
@@ -107,6 +109,8 @@ class ExecutionRouter {
     }
 
     if (marketType === 'futures') {
+      binanceExecutionService.assertConfigured();
+      binanceExecutionService.assertProductEnabled('futures');
       if (this.getExecutionEnv() !== 'live') {
         throw new Error('Binance futures execution is only enabled against the live USD-M futures API in this build');
       }

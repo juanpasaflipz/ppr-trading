@@ -1,6 +1,12 @@
 import crypto from 'crypto';
 
-const BINANCE_SPOT_LIVE_BASE = 'https://api.binance.com';
+const BINANCE_SPOT_LIVE_BASES = [
+  'https://api.binance.com',
+  'https://api1.binance.com',
+  'https://api2.binance.com',
+  'https://api3.binance.com',
+  'https://api4.binance.com',
+];
 const BINANCE_SPOT_TESTNET_BASE = 'https://testnet.binance.vision';
 const BINANCE_FUTURES_LIVE_BASES = [
   'https://fapi.binance.com',
@@ -52,11 +58,21 @@ class BinanceExecutionService {
       : BINANCE_FUTURES_LIVE_BASES;
   }
 
+  getSpotBases() {
+    if (!this.isLiveEnv()) {
+      return [BINANCE_SPOT_TESTNET_BASE];
+    }
+
+    return process.env.BINANCE_SPOT_BASE_URL
+      ? [process.env.BINANCE_SPOT_BASE_URL]
+      : BINANCE_SPOT_LIVE_BASES;
+  }
+
   getBaseUrl(product = 'spot') {
     if (product === 'futures') {
       return this.getFuturesBases()[0];
     }
-    return this.isLiveEnv() ? BINANCE_SPOT_LIVE_BASE : BINANCE_SPOT_TESTNET_BASE;
+    return this.getSpotBases()[0];
   }
 
   isConfigured() {
@@ -83,6 +99,39 @@ class BinanceExecutionService {
     }
   }
 
+  getDiagnostics() {
+    return {
+      executionEnv: this.getExecutionEnv(),
+      credentialsConfigured: this.isConfigured(),
+      spotLiveEnabled: process.env.BINANCE_LIVE_TRADING_ENABLED === 'true',
+      futuresLiveEnabled: process.env.BINANCE_FUTURES_LIVE_ENABLED === 'true',
+      usingLegacyGenericKeys: !!(
+        this.isLiveEnv()
+        && !process.env.BINANCE_LIVE_API_KEY
+        && !process.env.BINANCE_LIVE_API_SECRET
+        && process.env.BINANCE_API_KEY
+        && process.env.BINANCE_API_SECRET
+      ),
+    };
+  }
+
+  normalizeNetworkError(product, err) {
+    const message = err?.message || String(err);
+
+    if (/451/.test(message)) {
+      return new Error(
+        `Binance ${product} API is unavailable from this server region (HTTP 451). ` +
+        'Binance global live trading is commonly blocked from US-hosted infrastructure.'
+      );
+    }
+
+    if (/ENOTFOUND|EAI_AGAIN|getaddrinfo|fetch failed|ECONNRESET|ETIMEDOUT/i.test(message)) {
+      return new Error(`Could not reach Binance ${product} API: ${message}`);
+    }
+
+    return err instanceof Error ? err : new Error(message);
+  }
+
   buildSignature(params, secret) {
     const payload = new URLSearchParams(params).toString();
     return crypto.createHmac('sha256', secret).update(payload).digest('hex');
@@ -97,18 +146,26 @@ class BinanceExecutionService {
           if (!res.ok) throw new Error(`Binance futures public API error ${res.status}: ${await res.text()}`);
           return res.json();
         } catch (err) {
-          lastError = err;
+          lastError = this.normalizeNetworkError(product, err);
         }
       }
       throw lastError || new Error(`Failed to fetch Binance futures data for ${path}`);
     }
 
-    const url = `${this.getBaseUrl(product)}${path}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`Binance ${product} public API error ${res.status}: ${await res.text()}`);
+    let lastError = null;
+    for (const base of this.getSpotBases()) {
+      try {
+        const url = `${base}${path}`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`Binance ${product} public API error ${res.status}: ${await res.text()}`);
+        }
+        return res.json();
+      } catch (err) {
+        lastError = this.normalizeNetworkError(product, err);
+      }
     }
-    return res.json();
+    throw lastError || new Error(`Failed to fetch Binance ${product} data for ${path}`);
   }
 
   async signedRequest(method, product, path, params = {}) {
@@ -116,7 +173,7 @@ class BinanceExecutionService {
     this.assertProductEnabled(product);
 
     const { apiKey, apiSecret } = this.getCredentials();
-    const bases = product === 'futures' ? this.getFuturesBases() : [this.getBaseUrl(product)];
+    const bases = product === 'futures' ? this.getFuturesBases() : this.getSpotBases();
     let lastError = null;
 
     for (const base of bases) {
@@ -141,14 +198,17 @@ class BinanceExecutionService {
 
         if (!res.ok) {
           const body = await res.text();
-          if (res.status === 451) { lastError = new Error(`Binance ${product} execution error ${res.status}: ${body}`); continue; }
+          if (res.status === 451) {
+            lastError = this.normalizeNetworkError(product, new Error(`Binance ${product} execution error ${res.status}: ${body}`));
+            continue;
+          }
           throw new Error(`Binance ${product} execution error ${res.status}: ${body}`);
         }
 
         if (res.status === 204) return null;
         return res.json();
       } catch (err) {
-        lastError = err;
+        lastError = this.normalizeNetworkError(product, err);
         if (bases.length === 1) throw err;
       }
     }

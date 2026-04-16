@@ -5,6 +5,7 @@ import executionRouter from './executionRouter.js';
 import tradingEngine from './tradingEngine.js';
 
 const DEFAULTS = {
+  strategyId: 'ema_cross',
   enabled: 'false',
   symbol: 'BTCUSDT',
   timeframe: '1h',
@@ -23,8 +24,6 @@ function toNumber(value, fallback) {
 
 class AutomationService {
   constructor() {
-    this.strategyId = 'ema_cross';
-    this.strategy = BUILT_IN_STRATEGIES.ema_cross;
     this.active = false;
     this.lastProcessedCloseTime = null;
     this.inFlight = false;
@@ -34,6 +33,12 @@ class AutomationService {
   getConfig() {
     const db = getDb();
     const keys = [
+      'live_auto_strategy_id',
+      'live_auto_enabled',
+      'live_auto_symbol',
+      'live_auto_timeframe',
+      'live_auto_leverage',
+      'live_auto_max_position_pct',
       'ema_cross_auto_enabled',
       'ema_cross_auto_symbol',
       'ema_cross_auto_timeframe',
@@ -48,18 +53,26 @@ class AutomationService {
     }
 
     return {
-      enabled: values.ema_cross_auto_enabled ?? DEFAULTS.enabled,
-      symbol: values.ema_cross_auto_symbol ?? DEFAULTS.symbol,
-      timeframe: values.ema_cross_auto_timeframe ?? DEFAULTS.timeframe,
-      leverage: values.ema_cross_auto_leverage ?? DEFAULTS.leverage,
-      maxPositionPct: values.ema_cross_auto_max_position_pct ?? DEFAULTS.maxPositionPct,
+      strategyId: values.live_auto_strategy_id ?? DEFAULTS.strategyId,
+      enabled: values.live_auto_enabled ?? values.ema_cross_auto_enabled ?? DEFAULTS.enabled,
+      symbol: values.live_auto_symbol ?? values.ema_cross_auto_symbol ?? DEFAULTS.symbol,
+      timeframe: values.live_auto_timeframe ?? values.ema_cross_auto_timeframe ?? DEFAULTS.timeframe,
+      leverage: values.live_auto_leverage ?? values.ema_cross_auto_leverage ?? DEFAULTS.leverage,
+      maxPositionPct: values.live_auto_max_position_pct ?? values.ema_cross_auto_max_position_pct ?? DEFAULTS.maxPositionPct,
     };
+  }
+
+  getStrategy(strategyId) {
+    const selected = BUILT_IN_STRATEGIES[strategyId];
+    return selected || BUILT_IN_STRATEGIES[DEFAULTS.strategyId];
   }
 
   getStatus() {
     const config = this.getConfig();
+    const strategy = this.getStrategy(config.strategyId);
     return {
-      strategyId: this.strategyId,
+      strategyId: strategy.id,
+      strategyName: strategy.name,
       active: this.active,
       enabled: toBool(config.enabled),
       symbol: config.symbol,
@@ -80,6 +93,12 @@ class AutomationService {
   ensureConfigSeeded() {
     const db = getDb();
     const stmt = db.prepare('INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)');
+    stmt.run('live_auto_strategy_id', DEFAULTS.strategyId);
+    stmt.run('live_auto_enabled', DEFAULTS.enabled);
+    stmt.run('live_auto_symbol', DEFAULTS.symbol);
+    stmt.run('live_auto_timeframe', DEFAULTS.timeframe);
+    stmt.run('live_auto_leverage', DEFAULTS.leverage);
+    stmt.run('live_auto_max_position_pct', DEFAULTS.maxPositionPct);
     stmt.run('ema_cross_auto_enabled', DEFAULTS.enabled);
     stmt.run('ema_cross_auto_symbol', DEFAULTS.symbol);
     stmt.run('ema_cross_auto_timeframe', DEFAULTS.timeframe);
@@ -127,6 +146,7 @@ class AutomationService {
 
   async handleKline(kline) {
     const config = this.getConfig();
+    const strategy = this.getStrategy(config.strategyId);
     if (!this.active || !toBool(config.enabled)) return;
     if (this.inFlight) return;
     if (!kline.isClosed) return;
@@ -142,7 +162,7 @@ class AutomationService {
       getDb().prepare('INSERT INTO audit_log (event, details) VALUES (?, ?)').run(
         'automation_error',
         JSON.stringify({
-          strategyId: this.strategyId,
+          strategyId: strategy.id,
           symbol: config.symbol,
           timeframe: config.timeframe,
           message: err.message,
@@ -155,10 +175,11 @@ class AutomationService {
   }
 
   async evaluateAndExecute(config, closeTime) {
+    const strategy = this.getStrategy(config.strategyId);
     const candles = await binanceService.getCandles(config.symbol, config.timeframe, 80);
     if (candles.length < 60) return;
 
-    const indicators = backtester.calculateIndicators(candles, this.strategy.indicators || {});
+    const indicators = backtester.calculateIndicators(candles, strategy.indicators || {});
     const index = candles.length - 1;
     const candle = candles[index];
     const indicator = indicators[index];
@@ -170,18 +191,18 @@ class AutomationService {
     const hasLong = livePosition?.side === 'long';
     const hasShort = livePosition?.side === 'short';
 
-    const entrySignal = this.strategy.entry(candle, indicator, context);
-    const exitSignal = this.strategy.exit(candle, indicator, { ...context, position: livePosition || null });
+    const entrySignal = strategy.entry(candle, indicator, context);
+    const exitSignal = strategy.exit(candle, indicator, { ...context, position: livePosition || null });
 
     if (hasLong && exitSignal) {
       await executionRouter.closePosition(livePosition.id);
-      this.logAutomationAction('close', config, closeTime, { positionId: livePosition.id, reason: 'ema_cross_exit' });
+      this.logAutomationAction('close', config, closeTime, { positionId: livePosition.id, reason: `${strategy.id}_exit` });
       return;
     }
 
     if (hasShort) {
       await executionRouter.closePosition(livePosition.id);
-      this.logAutomationAction('close_short', config, closeTime, { positionId: livePosition.id, reason: 'unsupported_short_for_ema_long_only' });
+      this.logAutomationAction('close_short', config, closeTime, { positionId: livePosition.id, reason: 'unsupported_short_for_long_only_automation' });
       return;
     }
 
@@ -209,6 +230,7 @@ class AutomationService {
       this.logAutomationAction('open', config, closeTime, {
         orderId: result.id,
         exchangeOrderId: result.exchangeOrderId,
+        strategyId: strategy.id,
         leverage,
         quantityPercent,
       });
@@ -216,10 +238,11 @@ class AutomationService {
   }
 
   logAutomationAction(action, config, closeTime, details = {}) {
+    const strategy = this.getStrategy(config.strategyId);
     getDb().prepare('INSERT INTO audit_log (event, details) VALUES (?, ?)').run(
       'automation_action',
       JSON.stringify({
-        strategyId: this.strategyId,
+        strategyId: strategy.id,
         action,
         symbol: config.symbol,
         timeframe: config.timeframe,

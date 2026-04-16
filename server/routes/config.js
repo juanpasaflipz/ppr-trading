@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getDb } from '../db/database.js';
 import executionRouter from '../services/executionRouter.js';
 import binanceService from '../services/binance.js';
+import binanceExecutionService from '../services/binanceExecution.js';
 import openaiService from '../services/openaiService.js';
 import automationService from '../services/automationService.js';
 
@@ -17,9 +18,11 @@ router.get('/', (req, res) => {
     res.json({
       ...config,
       trading_mode: executionRouter.getMode(),
-      binance_execution_env: executionRouter.getExecutionEnv(),
+      binance_execution_env: binanceExecutionService.getExecutionEnv(),
       binance_live_trading_enabled: process.env.BINANCE_LIVE_TRADING_ENABLED === 'true',
       binance_futures_live_enabled: process.env.BINANCE_FUTURES_LIVE_ENABLED === 'true',
+      binance_credentials_configured: binanceExecutionService.isConfigured(),
+      binance_diagnostics: binanceExecutionService.getDiagnostics(),
       binance_connected: binanceService.isConnected,
       binance_status: binanceService.getStatus(),
       llm_enabled: openaiService.isConfigured(),
@@ -44,7 +47,7 @@ router.put('/', async (req, res) => {
         executionRouter.switchMode(value, updates.confirmation);
         continue;
       }
-      if (key.startsWith('ema_cross_auto_')) shouldRefreshAutomation = true;
+      if (key.startsWith('ema_cross_auto_') || key.startsWith('live_auto_')) shouldRefreshAutomation = true;
       stmt.run(key, String(value));
     }
 

@@ -16,7 +16,7 @@ router.post('/ema-cross/start', async (req, res) => {
   try {
     getDb().prepare(`
       INSERT OR REPLACE INTO config (key, value, updated_at)
-      VALUES ('ema_cross_auto_enabled', 'true', CURRENT_TIMESTAMP)
+      VALUES ('live_auto_enabled', 'true', CURRENT_TIMESTAMP)
     `).run();
     const status = await automationService.refresh();
     res.json(status);
@@ -29,7 +29,7 @@ router.post('/ema-cross/stop', (req, res) => {
   try {
     getDb().prepare(`
       INSERT OR REPLACE INTO config (key, value, updated_at)
-      VALUES ('ema_cross_auto_enabled', 'false', CURRENT_TIMESTAMP)
+      VALUES ('live_auto_enabled', 'false', CURRENT_TIMESTAMP)
     `).run();
     res.json(automationService.stop());
   } catch (err) {

@@ -9,6 +9,7 @@ export default function SettingsPage() {
   const [showLiveConfirm, setShowLiveConfirm] = useState(false);
   const [liveConfirmText, setLiveConfirmText] = useState('');
   const [automationStatus, setAutomationStatus] = useState(null);
+  const [liveStrategies, setLiveStrategies] = useState([]);
 
   useEffect(() => {
     if (config) {
@@ -21,11 +22,12 @@ export default function SettingsPage() {
         max_position_size_pct: config.max_position_size_pct || '25',
         daily_loss_limit: config.daily_loss_limit || '10000',
         max_leverage: config.max_leverage || '125',
-        ema_cross_auto_enabled: config.ema_cross_auto_enabled || 'false',
-        ema_cross_auto_symbol: config.ema_cross_auto_symbol || 'BTCUSDT',
-        ema_cross_auto_timeframe: config.ema_cross_auto_timeframe || '1h',
-        ema_cross_auto_leverage: config.ema_cross_auto_leverage || '3',
-        ema_cross_auto_max_position_pct: config.ema_cross_auto_max_position_pct || '5',
+        live_auto_strategy_id: config.live_auto_strategy_id || 'ema_cross',
+        live_auto_enabled: config.live_auto_enabled || config.ema_cross_auto_enabled || 'false',
+        live_auto_symbol: config.live_auto_symbol || config.ema_cross_auto_symbol || 'BTCUSDT',
+        live_auto_timeframe: config.live_auto_timeframe || config.ema_cross_auto_timeframe || '1h',
+        live_auto_leverage: config.live_auto_leverage || config.ema_cross_auto_leverage || '3',
+        live_auto_max_position_pct: config.live_auto_max_position_pct || config.ema_cross_auto_max_position_pct || '5',
         llm_provider: config.llm_provider || 'openai',
         llm_model: config.llm_model || config.llm_available_models?.[0] || 'gpt-5.4',
       });
@@ -34,6 +36,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     api.getEmaCrossAutomationStatus().then(setAutomationStatus).catch(() => {});
+    api.getBacktestStrategies().then(setLiveStrategies).catch(() => {});
   }, []);
 
   const handleSave = async () => {
@@ -84,12 +87,17 @@ export default function SettingsPage() {
   };
 
   const isLive = config?.trading_mode === 'live';
+  const executionEnv = config?.binance_execution_env || 'testnet';
+  const binanceDiagnostics = config?.binance_diagnostics || {};
+  const binanceKeysLabel = executionEnv === 'live'
+    ? 'BINANCE_LIVE_API_KEY / BINANCE_LIVE_API_SECRET'
+    : 'BINANCE_TESTNET_API_KEY / BINANCE_TESTNET_API_SECRET';
 
   const toggleAutomation = async () => {
     try {
-      const enabled = form.ema_cross_auto_enabled === 'true';
+      const enabled = form.live_auto_enabled === 'true';
       const nextEnabled = enabled ? 'false' : 'true';
-      const nextForm = { ...form, ema_cross_auto_enabled: nextEnabled };
+      const nextForm = { ...form, live_auto_enabled: nextEnabled };
       setForm(nextForm);
       await api.updateConfig(nextForm);
       const updated = await api.getConfig();
@@ -98,7 +106,7 @@ export default function SettingsPage() {
         ? await api.startEmaCrossAutomation()
         : await api.stopEmaCrossAutomation();
       setAutomationStatus(status);
-      addToast(nextEnabled === 'true' ? 'EMA futures automation enabled' : 'EMA futures automation disabled', 'success');
+      addToast(nextEnabled === 'true' ? 'Live futures automation enabled' : 'Live futures automation disabled', 'success');
     } catch (err) {
       addToast(err.message, 'error');
     }
@@ -207,40 +215,83 @@ export default function SettingsPage() {
         </div>
         <p className="text-xs text-slate-500 mb-3">
           API keys are configured via the <code className="bg-slate-800 px-1 rounded">.env</code> file for security.
-          Set <code className="bg-slate-800 px-1 rounded">BINANCE_API_KEY</code> and <code className="bg-slate-800 px-1 rounded">BINANCE_API_SECRET</code> there.
+          Set <code className="bg-slate-800 px-1 rounded">{binanceKeysLabel}</code> there.
         </p>
-        <div className="flex items-center gap-2 text-xs">
-          <div className={`w-2 h-2 rounded-full ${config?.binance_connected ? 'bg-emerald-400' : 'bg-red-400'}`} />
-          <span className="text-slate-400">
-            Binance: {config?.binance_connected ? 'Connected' : 'Not connected'}
-            {config?.binance_status?.trackedPairs > 0 && ` (${config.binance_status.trackedPairs} pairs)`}
-          </span>
+        <div className="space-y-2 text-xs">
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${config?.binance_connected ? 'bg-emerald-400' : 'bg-red-400'}`} />
+            <span className="text-slate-400">
+              Binance market data: {config?.binance_connected ? 'Connected' : 'Not connected'}
+              {config?.binance_status?.trackedPairs > 0 && ` (${config.binance_status.trackedPairs} pairs)`}
+            </span>
+          </div>
+          <div className="text-slate-400">
+            Execution env: <span className="text-white">{executionEnv.toUpperCase()}</span>
+          </div>
+          <div className="text-slate-400">
+            Execution credentials: <span className={config?.binance_credentials_configured ? 'text-emerald-400' : 'text-red-400'}>
+              {config?.binance_credentials_configured ? 'Configured' : 'Missing'}
+            </span>
+          </div>
+          {executionEnv === 'live' && (
+            <div className="text-slate-400">
+              Live flags:
+              <span className={config?.binance_live_trading_enabled ? 'text-emerald-400 ml-1' : 'text-red-400 ml-1'}>
+                Spot {config?.binance_live_trading_enabled ? 'enabled' : 'disabled'}
+              </span>
+              <span className={config?.binance_futures_live_enabled ? 'text-emerald-400 ml-3' : 'text-red-400 ml-3'}>
+                Futures {config?.binance_futures_live_enabled ? 'enabled' : 'disabled'}
+              </span>
+            </div>
+          )}
+          {binanceDiagnostics.usingLegacyGenericKeys && (
+            <div className="text-amber-300">
+              Using fallback <code className="bg-slate-800 px-1 rounded">BINANCE_API_KEY</code> values in live mode. Prefer dedicated live vars.
+            </div>
+          )}
+          {executionEnv === 'live' && (
+            <div className="text-amber-300">
+              Live mode uses Binance global APIs. US-hosted infrastructure may be rejected by Binance with regional restrictions.
+            </div>
+          )}
         </div>
       </div>
 
       <div className="bg-[#12151a] rounded-lg p-4 border border-slate-800/50">
         <div className="flex items-center gap-3 mb-3">
           <Bot size={18} className="text-cyan-400" />
-          <h3 className="text-sm font-semibold">EMA Futures Automation</h3>
+          <h3 className="text-sm font-semibold">Live Futures Automation</h3>
         </div>
         <p className="text-xs text-slate-500 mb-4">
-          Controlled live runner for the built-in EMA 9/21 cross strategy. It watches one symbol and timeframe,
-          opens a futures long on bullish cross, and submits a reduce-only close on bearish cross.
+          Controlled live runner for built-in long-only strategies. Select the strategy, symbol, timeframe, leverage,
+          and max position size to control what gets sent to Binance futures.
         </p>
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
+            <label className="text-xs text-slate-500 mb-1 block">Strategy</label>
+            <select
+              value={form.live_auto_strategy_id || 'ema_cross'}
+              onChange={e => setForm({ ...form, live_auto_strategy_id: e.target.value })}
+              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white"
+            >
+              {liveStrategies.map((strategy) => (
+                <option key={strategy.id} value={strategy.id}>{strategy.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="text-xs text-slate-500 mb-1 block">Symbol</label>
             <input
-              value={form.ema_cross_auto_symbol || ''}
-              onChange={e => setForm({ ...form, ema_cross_auto_symbol: e.target.value.toUpperCase() })}
+              value={form.live_auto_symbol || ''}
+              onChange={e => setForm({ ...form, live_auto_symbol: e.target.value.toUpperCase() })}
               className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:border-yellow-500"
             />
           </div>
           <div>
             <label className="text-xs text-slate-500 mb-1 block">Timeframe</label>
             <select
-              value={form.ema_cross_auto_timeframe || '1h'}
-              onChange={e => setForm({ ...form, ema_cross_auto_timeframe: e.target.value })}
+              value={form.live_auto_timeframe || '1h'}
+              onChange={e => setForm({ ...form, live_auto_timeframe: e.target.value })}
               className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white"
             >
               {['1m', '5m', '15m', '1h', '4h', '1d'].map((tf) => (
@@ -252,8 +303,8 @@ export default function SettingsPage() {
             <label className="text-xs text-slate-500 mb-1 block">Automation Leverage</label>
             <input
               type="number"
-              value={form.ema_cross_auto_leverage || ''}
-              onChange={e => setForm({ ...form, ema_cross_auto_leverage: e.target.value })}
+              value={form.live_auto_leverage || ''}
+              onChange={e => setForm({ ...form, live_auto_leverage: e.target.value })}
               className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:border-yellow-500"
             />
           </div>
@@ -261,26 +312,27 @@ export default function SettingsPage() {
             <label className="text-xs text-slate-500 mb-1 block">Max Position Size (%)</label>
             <input
               type="number"
-              value={form.ema_cross_auto_max_position_pct || ''}
-              onChange={e => setForm({ ...form, ema_cross_auto_max_position_pct: e.target.value })}
+              value={form.live_auto_max_position_pct || ''}
+              onChange={e => setForm({ ...form, live_auto_max_position_pct: e.target.value })}
               className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm outline-none focus:border-yellow-500"
             />
           </div>
         </div>
         <div className="flex items-center justify-between gap-4">
           <div className="text-xs text-slate-400">
+            <div>Strategy: {automationStatus?.strategyName || 'Unknown'}</div>
             <div>Status: {automationStatus?.active ? 'Running' : 'Stopped'}</div>
             <div>Last candle: {automationStatus?.lastProcessedCloseTime ? new Date(automationStatus.lastProcessedCloseTime).toLocaleString() : 'Never'}</div>
           </div>
           <button
             onClick={toggleAutomation}
             className={`px-4 py-2 rounded font-semibold text-sm ${
-              form.ema_cross_auto_enabled === 'true'
+              form.live_auto_enabled === 'true'
                 ? 'bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20'
                 : 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/20'
             }`}
           >
-            {form.ema_cross_auto_enabled === 'true' ? 'Disable Runner' : 'Enable Runner'}
+            {form.live_auto_enabled === 'true' ? 'Disable Runner' : 'Enable Runner'}
           </button>
         </div>
       </div>

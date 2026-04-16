@@ -4,12 +4,22 @@ import executionRouter from '../services/executionRouter.js';
 
 const router = Router();
 
+function getOrderErrorStatus(err) {
+  const message = err?.message || '';
+
+  if (/Could not reach Binance|Binance .* API is unavailable from this server region|Failed to (fetch|reach) Binance|Binance .* API error 5\d\d/i.test(message)) {
+    return 502;
+  }
+
+  return 400;
+}
+
 router.post('/', async (req, res) => {
   try {
     const order = await executionRouter.routeOrder(req.body);
     res.json(order);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(getOrderErrorStatus(err)).json({ error: err.message });
   }
 });
 
