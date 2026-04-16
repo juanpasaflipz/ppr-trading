@@ -2,7 +2,10 @@ import crypto from 'crypto';
 
 const BINANCE_SPOT_LIVE_BASE = 'https://api.binance.com';
 const BINANCE_SPOT_TESTNET_BASE = 'https://testnet.binance.vision';
-const BINANCE_FUTURES_LIVE_BASE = 'https://fapi.binance.com';
+const BINANCE_FUTURES_LIVE_BASES = [
+  'https://fapi.binance.com',
+  'https://fapi.binance.me',
+];
 
 function trimTrailingZeros(value) {
   return value.replace(/\.?0+$/, '');
@@ -43,9 +46,15 @@ class BinanceExecutionService {
     };
   }
 
+  getFuturesBases() {
+    return process.env.BINANCE_FUTURES_BASE_URL
+      ? [process.env.BINANCE_FUTURES_BASE_URL]
+      : BINANCE_FUTURES_LIVE_BASES;
+  }
+
   getBaseUrl(product = 'spot') {
     if (product === 'futures') {
-      return BINANCE_FUTURES_LIVE_BASE;
+      return this.getFuturesBases()[0];
     }
     return this.isLiveEnv() ? BINANCE_SPOT_LIVE_BASE : BINANCE_SPOT_TESTNET_BASE;
   }
@@ -80,6 +89,20 @@ class BinanceExecutionService {
   }
 
   async publicRequest(product, path) {
+    if (product === 'futures') {
+      let lastError = null;
+      for (const base of this.getFuturesBases()) {
+        try {
+          const res = await fetch(`${base}${path}`);
+          if (!res.ok) throw new Error(`Binance futures public API error ${res.status}: ${await res.text()}`);
+          return res.json();
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      throw lastError || new Error(`Failed to fetch Binance futures data for ${path}`);
+    }
+
     const url = `${this.getBaseUrl(product)}${path}`;
     const res = await fetch(url);
     if (!res.ok) {
@@ -93,30 +116,44 @@ class BinanceExecutionService {
     this.assertProductEnabled(product);
 
     const { apiKey, apiSecret } = this.getCredentials();
-    const timestamp = Date.now();
-    const requestParams = {
-      ...params,
-      recvWindow: params.recvWindow || 5000,
-      timestamp,
-    };
+    const bases = product === 'futures' ? this.getFuturesBases() : [this.getBaseUrl(product)];
+    let lastError = null;
 
-    const signature = this.buildSignature(requestParams, apiSecret);
-    const query = new URLSearchParams({ ...requestParams, signature }).toString();
-    const url = `${this.getBaseUrl(product)}${path}?${query}`;
+    for (const base of bases) {
+      try {
+        const timestamp = Date.now();
+        const requestParams = {
+          ...params,
+          recvWindow: params.recvWindow || 5000,
+          timestamp,
+        };
 
-    const res = await fetch(url, {
-      method,
-      headers: {
-        'X-MBX-APIKEY': apiKey,
-      },
-    });
+        const signature = this.buildSignature(requestParams, apiSecret);
+        const query = new URLSearchParams({ ...requestParams, signature }).toString();
+        const url = `${base}${path}?${query}`;
 
-    if (!res.ok) {
-      throw new Error(`Binance ${product} execution error ${res.status}: ${await res.text()}`);
+        const res = await fetch(url, {
+          method,
+          headers: {
+            'X-MBX-APIKEY': apiKey,
+          },
+        });
+
+        if (!res.ok) {
+          const body = await res.text();
+          if (res.status === 451) { lastError = new Error(`Binance ${product} execution error ${res.status}: ${body}`); continue; }
+          throw new Error(`Binance ${product} execution error ${res.status}: ${body}`);
+        }
+
+        if (res.status === 204) return null;
+        return res.json();
+      } catch (err) {
+        lastError = err;
+        if (bases.length === 1) throw err;
+      }
     }
 
-    if (res.status === 204) return null;
-    return res.json();
+    throw lastError || new Error(`Failed to reach Binance ${product} API for ${path}`);
   }
 
   getBalanceMap(account) {

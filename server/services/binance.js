@@ -8,7 +8,10 @@ const BINANCE_PUBLIC_REST_BASES = [
 ];
 const BINANCE_WS_BASE = 'wss://data-stream.binance.vision/ws';
 const BINANCE_STREAM_BASE = 'wss://data-stream.binance.vision/stream';
-const BINANCE_FUTURES_REST = 'https://fapi.binance.com';
+const BINANCE_FUTURES_REST_BASES = [
+  'https://fapi.binance.com',
+  'https://fapi.binance.me',
+];
 const BINANCE_FUTURES_WS = 'wss://fstream.binance.com/ws';
 
 // Popular crypto pairs
@@ -51,6 +54,23 @@ class BinanceService extends EventEmitter {
     }
 
     throw lastError || new Error(`Failed to fetch Binance public data for ${path}`);
+  }
+
+  async fetchFuturesJSON(path) {
+    const bases = process.env.BINANCE_FUTURES_BASE_URL
+      ? [process.env.BINANCE_FUTURES_BASE_URL]
+      : BINANCE_FUTURES_REST_BASES;
+    let lastError = null;
+
+    for (const base of bases) {
+      try {
+        return await this.fetchJSON(`${base}${path}`);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error(`Failed to fetch Binance futures data for ${path}`);
   }
 
   // REST API Methods
@@ -118,11 +138,11 @@ class BinanceService extends EventEmitter {
   }
 
   async getFundingRate(symbol) {
-    return this.fetchJSON(`${BINANCE_FUTURES_REST}/fapi/v1/fundingRate?symbol=${symbol}&limit=1`);
+    return this.fetchFuturesJSON(`/fapi/v1/fundingRate?symbol=${symbol}&limit=1`);
   }
 
   async getMarkPrice(symbol) {
-    return this.fetchJSON(`${BINANCE_FUTURES_REST}/fapi/v1/premiumIndex?symbol=${symbol}`);
+    return this.fetchFuturesJSON(`/fapi/v1/premiumIndex?symbol=${symbol}`);
   }
 
   async getAvailablePairs() {
