@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS wallets (
 CREATE TABLE IF NOT EXISTS orders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   client_order_id TEXT UNIQUE,
+  exchange_order_id TEXT,
   symbol TEXT NOT NULL,
   side TEXT NOT NULL CHECK(side IN ('buy', 'sell')),
   type TEXT NOT NULL,
@@ -27,6 +28,8 @@ CREATE TABLE IF NOT EXISTS orders (
   take_profit REAL,
   stop_loss REAL,
   fee REAL DEFAULT 0,
+  execution_env TEXT DEFAULT 'paper',
+  remote_status TEXT,
   source TEXT DEFAULT 'manual' CHECK(source IN ('manual', 'webhook', 'backtest')),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

@@ -274,9 +274,28 @@ class TradingEngine {
 
     // Insert order
     const result = db.prepare(`
-      INSERT INTO orders (client_order_id, symbol, side, type, market_type, price, stop_price, quantity, leverage, take_profit, stop_loss, source, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-    `).run(clientOrderId, symbol, side, type, marketType, price || null, stopPrice || null, orderQty, leverage, takeProfit || null, stopLoss || null, source);
+      INSERT INTO orders (
+        client_order_id, exchange_order_id, symbol, side, type, market_type, price, stop_price,
+        quantity, leverage, take_profit, stop_loss, source, status, execution_env, remote_status
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+    `).run(
+      clientOrderId,
+      null,
+      symbol,
+      side,
+      type,
+      marketType,
+      price || null,
+      stopPrice || null,
+      orderQty,
+      leverage,
+      takeProfit || null,
+      stopLoss || null,
+      source,
+      'paper',
+      null
+    );
 
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(result.lastInsertRowid);
 
@@ -720,15 +739,25 @@ class TradingEngine {
 
   getTradeHistory(filters = {}) {
     const db = getDb();
-    let query = 'SELECT * FROM trades WHERE 1=1';
+    let query = `
+      SELECT
+        trades.*,
+        orders.execution_env,
+        orders.exchange_order_id,
+        orders.remote_status,
+        orders.source
+      FROM trades
+      LEFT JOIN orders ON orders.id = trades.order_id
+      WHERE 1=1
+    `;
     const params = [];
 
-    if (filters.symbol) { query += ' AND symbol = ?'; params.push(filters.symbol); }
-    if (filters.marketType) { query += ' AND market_type = ?'; params.push(filters.marketType); }
-    if (filters.startDate) { query += ' AND executed_at >= ?'; params.push(filters.startDate); }
-    if (filters.endDate) { query += ' AND executed_at <= ?'; params.push(filters.endDate); }
+    if (filters.symbol) { query += ' AND trades.symbol = ?'; params.push(filters.symbol); }
+    if (filters.marketType) { query += ' AND trades.market_type = ?'; params.push(filters.marketType); }
+    if (filters.startDate) { query += ' AND trades.executed_at >= ?'; params.push(filters.startDate); }
+    if (filters.endDate) { query += ' AND trades.executed_at <= ?'; params.push(filters.endDate); }
 
-    query += ' ORDER BY executed_at DESC';
+    query += ' ORDER BY trades.executed_at DESC';
     if (filters.limit) { query += ' LIMIT ?'; params.push(filters.limit); }
     if (filters.offset) { query += ' OFFSET ?'; params.push(filters.offset); }
 

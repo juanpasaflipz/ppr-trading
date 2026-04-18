@@ -131,6 +131,7 @@ export default function TradeHistory() {
               <th className="text-left px-4 py-2">Date</th>
               <th className="text-left px-4 py-2">Pair</th>
               <th className="text-left px-4 py-2">Type</th>
+              <th className="text-left px-4 py-2">Venue</th>
               <th className="text-left px-4 py-2">Side</th>
               <th className="text-right px-4 py-2">Price</th>
               <th className="text-right px-4 py-2">Quantity</th>
@@ -141,7 +142,7 @@ export default function TradeHistory() {
           <tbody>
             {filteredTrades.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center py-8 text-slate-500">
+                <td colSpan={9} className="text-center py-8 text-slate-500">
                   No trades yet. Place your first order in the Terminal.
                 </td>
               </tr>
@@ -152,6 +153,21 @@ export default function TradeHistory() {
                   <td className="px-4 py-2.5 font-medium">{t.symbol}</td>
                   <td className="px-4 py-2.5">
                     <span className="px-2 py-0.5 rounded text-xs bg-slate-800 capitalize">{t.market_type}</span>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <span className={`px-2 py-0.5 rounded text-xs uppercase ${
+                      t.execution_env && t.execution_env !== 'paper'
+                        ? 'bg-cyan-500/10 text-cyan-300'
+                        : 'bg-slate-800 text-slate-300'
+                    }`}>
+                      {t.execution_env && t.execution_env !== 'paper' ? 'Binance' : 'Paper'}
+                    </span>
+                    {t.exchange_order_id && (
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        ID {t.exchange_order_id}
+                        {t.remote_status ? ` • ${t.remote_status}` : ''}
+                      </div>
+                    )}
                   </td>
                   <td className={`px-4 py-2.5 font-medium ${t.side === 'buy' ? 'text-emerald-400' : 'text-red-400'}`}>
                     {t.side.toUpperCase()}

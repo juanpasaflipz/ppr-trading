@@ -159,10 +159,14 @@ class ExecutionRouter {
 
     const result = db.prepare(`
       INSERT INTO orders
-      (client_order_id, symbol, side, type, market_type, price, quantity, filled_quantity, status, leverage, fee, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (
+        client_order_id, exchange_order_id, symbol, side, type, market_type, price, quantity,
+        filled_quantity, status, leverage, fee, source, execution_env, remote_status
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       clientOrderId,
+      String(remoteOrder.orderId ?? ''),
       request.symbol,
       request.side,
       request.type || 'market',
@@ -173,7 +177,9 @@ class ExecutionRouter {
       localStatus,
       1,
       totalFee,
-      source
+      source,
+      this.getExecutionEnv(),
+      remoteOrder.status || null
     );
 
     const localOrderId = Number(result.lastInsertRowid);
@@ -218,10 +224,14 @@ class ExecutionRouter {
 
     const result = db.prepare(`
       INSERT INTO orders
-      (client_order_id, symbol, side, type, market_type, price, quantity, filled_quantity, status, leverage, fee, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (
+        client_order_id, exchange_order_id, symbol, side, type, market_type, price, quantity,
+        filled_quantity, status, leverage, fee, source, execution_env, remote_status
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       clientOrderId,
+      String(remoteOrder.orderId ?? ''),
       request.symbol,
       request.side,
       request.type || 'market',
@@ -232,7 +242,9 @@ class ExecutionRouter {
       localStatus,
       toNumber(request.leverage || 1),
       0,
-      source
+      source,
+      this.getExecutionEnv(),
+      remoteOrder.status || null
     );
 
     const localOrderId = Number(result.lastInsertRowid);

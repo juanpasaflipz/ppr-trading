@@ -9,6 +9,16 @@ const POPULAR_PAIRS = [
   'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT', 'DOTUSDT',
 ];
 
+function formatExecutionToast(order, side, symbol) {
+  if (order.executionEnv && order.executionEnv !== 'paper') {
+    const remoteState = order.remoteStatus || order.status || 'accepted';
+    const exchangeId = order.exchangeOrderId ? ` • Binance ID ${order.exchangeOrderId}` : '';
+    return `Live Binance ${remoteState}: ${side.toUpperCase()} ${symbol}${exchangeId}`;
+  }
+
+  return `Paper ${order.status || 'filled'}: ${side.toUpperCase()} ${symbol}`;
+}
+
 export default function TradingTerminal() {
   const { ws, addToast } = useApp();
   const [selectedPair, setSelectedPair] = useState('BTCUSDT');
@@ -182,7 +192,7 @@ export default function TradingTerminal() {
       if (stopLoss) params.stopLoss = parseFloat(stopLoss);
 
       const order = await api.placeOrder(params);
-      addToast(`Order ${order.status}: ${side.toUpperCase()} ${selectedPair}`, 'success');
+      addToast(formatExecutionToast(order, side, selectedPair), 'success');
       setQuantity('');
       setQuantityPercent(0);
       setTakeProfit('');
@@ -208,7 +218,10 @@ export default function TradingTerminal() {
   const closePosition = async (id) => {
     try {
       const result = await api.closePosition(id);
-      addToast(`Position closed. PnL: ${formatUSD(result.pnl)}`, result.pnl >= 0 ? 'success' : 'warning');
+      const closeMessage = result.executionEnv && result.executionEnv !== 'paper'
+        ? `Live Binance close submitted${result.exchangeOrderId ? ` • Binance ID ${result.exchangeOrderId}` : ''}. PnL: ${formatUSD(result.pnl)}`
+        : `Paper position closed. PnL: ${formatUSD(result.pnl)}`;
+      addToast(closeMessage, result.pnl >= 0 ? 'success' : 'warning');
       api.getPositions().then(setPositions);
     } catch (err) {
       addToast(err.message, 'error');
@@ -346,6 +359,7 @@ export default function TradingTerminal() {
                   <tr className="text-slate-500 border-b border-slate-800">
                     <td className="pb-1">Symbol</td>
                     <td>Type</td>
+                    <td>Venue</td>
                     <td>Side</td>
                     <td>Price</td>
                     <td>Qty</td>
@@ -358,6 +372,18 @@ export default function TradingTerminal() {
                     <tr key={order.id} className="border-b border-slate-800/50">
                       <td className="py-1.5">{order.symbol}</td>
                       <td className="capitalize">{order.type}</td>
+                      <td>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase ${
+                          order.execution_env && order.execution_env !== 'paper'
+                            ? 'bg-cyan-500/10 text-cyan-300'
+                            : 'bg-slate-700 text-slate-300'
+                        }`}>
+                          {order.execution_env && order.execution_env !== 'paper' ? 'Binance' : 'Paper'}
+                        </span>
+                        {order.exchange_order_id && (
+                          <div className="text-[10px] text-slate-500 mt-0.5">ID {order.exchange_order_id}</div>
+                        )}
+                      </td>
                       <td className={order.side === 'buy' ? 'text-emerald-400' : 'text-red-400'}>
                         {order.side.toUpperCase()}
                       </td>

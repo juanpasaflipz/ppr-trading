@@ -56,9 +56,25 @@ function ensureStrategyLabMigrations(db) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_strategies_v2_family ON strategies_v2(family_id, updated_at)`);
 }
 
+function ensureOrderExecutionMigrations(db) {
+  const columns = db.prepare(`PRAGMA table_info(orders)`).all();
+  const names = new Set(columns.map((column) => column.name));
+
+  if (!names.has('exchange_order_id')) {
+    db.exec(`ALTER TABLE orders ADD COLUMN exchange_order_id TEXT`);
+  }
+  if (!names.has('execution_env')) {
+    db.exec(`ALTER TABLE orders ADD COLUMN execution_env TEXT DEFAULT 'paper'`);
+  }
+  if (!names.has('remote_status')) {
+    db.exec(`ALTER TABLE orders ADD COLUMN remote_status TEXT`);
+  }
+}
+
 function seed() {
   const db = getDb();
   ensureStrategyLabMigrations(db);
+  ensureOrderExecutionMigrations(db);
 
   // Seed default config
   const configs = [
