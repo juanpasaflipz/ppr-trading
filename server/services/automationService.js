@@ -70,6 +70,30 @@ class AutomationService {
   getStatus() {
     const config = this.getConfig();
     const strategy = this.getStrategy(config.strategyId);
+    const latestAction = getDb().prepare(`
+      SELECT details, created_at
+      FROM audit_log
+      WHERE event = 'automation_action'
+      ORDER BY id DESC
+      LIMIT 1
+    `).get();
+    const latestError = getDb().prepare(`
+      SELECT details, created_at
+      FROM audit_log
+      WHERE event = 'automation_error'
+      ORDER BY id DESC
+      LIMIT 1
+    `).get();
+
+    const parseDetails = (row) => {
+      if (!row?.details) return null;
+      try {
+        return { ...JSON.parse(row.details), createdAt: row.created_at };
+      } catch {
+        return { raw: row.details, createdAt: row.created_at };
+      }
+    };
+
     return {
       strategyId: strategy.id,
       strategyName: strategy.name,
@@ -81,6 +105,8 @@ class AutomationService {
       maxPositionPct: toNumber(config.maxPositionPct, 5),
       lastProcessedCloseTime: this.lastProcessedCloseTime,
       inFlight: this.inFlight,
+      lastAction: parseDetails(latestAction),
+      lastError: parseDetails(latestError),
     };
   }
 

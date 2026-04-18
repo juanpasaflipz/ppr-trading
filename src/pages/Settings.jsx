@@ -92,6 +92,8 @@ export default function SettingsPage() {
   const binanceKeysLabel = executionEnv === 'live'
     ? 'BINANCE_LIVE_API_KEY / BINANCE_LIVE_API_SECRET'
     : 'BINANCE_TESTNET_API_KEY / BINANCE_TESTNET_API_SECRET';
+  const lastAutomationAction = automationStatus?.lastAction;
+  const lastAutomationError = automationStatus?.lastError;
 
   const toggleAutomation = async () => {
     try {
@@ -323,6 +325,19 @@ export default function SettingsPage() {
             <div>Strategy: {automationStatus?.strategyName || 'Unknown'}</div>
             <div>Status: {automationStatus?.active ? 'Running' : 'Stopped'}</div>
             <div>Last candle: {automationStatus?.lastProcessedCloseTime ? new Date(automationStatus.lastProcessedCloseTime).toLocaleString() : 'Never'}</div>
+            {lastAutomationAction && (
+              <div className="mt-2 text-slate-300">
+                Last action:
+                <span className="ml-1 uppercase">{lastAutomationAction.action || 'unknown'}</span>
+                {lastAutomationAction.exchangeOrderId ? ` • Binance ID ${lastAutomationAction.exchangeOrderId}` : ''}
+                {lastAutomationAction.createdAt ? ` • ${new Date(lastAutomationAction.createdAt).toLocaleString()}` : ''}
+              </div>
+            )}
+            {lastAutomationError?.message && (
+              <div className="mt-2 text-red-300">
+                Last error: {lastAutomationError.message}
+              </div>
+            )}
           </div>
           <button
             onClick={toggleAutomation}

@@ -729,6 +729,7 @@ class TradingEngine {
 
       return {
         ...pos,
+        execution_env: this.shouldSyncLiveFutures() ? 'live' : 'paper',
         markPrice,
         unrealizedPnl,
         roe,

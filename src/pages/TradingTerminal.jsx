@@ -20,7 +20,7 @@ function formatExecutionToast(order, side, symbol) {
 }
 
 export default function TradingTerminal() {
-  const { ws, addToast } = useApp();
+  const { ws, addToast, config } = useApp();
   const [selectedPair, setSelectedPair] = useState('BTCUSDT');
   const [candles, setCandles] = useState([]);
   const [orderBook, setOrderBook] = useState({ bids: [], asks: [] });
@@ -46,6 +46,9 @@ export default function TradingTerminal() {
 
   const currentPrice = ws.prices[selectedPair] || 0;
   const dec = priceDecimals(currentPrice);
+  const isLiveFuturesContext = config?.trading_mode === 'live'
+    && config?.binance_execution_env === 'live'
+    && config?.binance_futures_live_enabled;
 
   // Load candles
   useEffect(() => {
@@ -317,6 +320,7 @@ export default function TradingTerminal() {
                   <tr className="text-slate-500 border-b border-slate-800">
                     <td className="pb-1">Symbol</td>
                     <td>Side</td>
+                    <td>Venue</td>
                     <td>Size</td>
                     <td>Entry</td>
                     <td>Mark</td>
@@ -332,6 +336,18 @@ export default function TradingTerminal() {
                       <td className="py-1.5 font-medium">{pos.symbol}</td>
                       <td className={pos.side === 'long' ? 'text-emerald-400' : 'text-red-400'}>
                         {pos.side.toUpperCase()} {pos.leverage}x
+                      </td>
+                      <td>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase ${
+                          pos.execution_env && pos.execution_env !== 'paper'
+                            ? 'bg-cyan-500/10 text-cyan-300'
+                            : 'bg-slate-700 text-slate-300'
+                        }`}>
+                          {pos.execution_env && pos.execution_env !== 'paper' ? 'Binance' : 'Paper'}
+                        </span>
+                        {pos.execution_env !== 'paper' && isLiveFuturesContext && (
+                          <div className="text-[10px] text-slate-500 mt-0.5">Synced live futures position</div>
+                        )}
                       </td>
                       <td>{formatCrypto(pos.quantity, 4)}</td>
                       <td>{formatNumber(pos.entry_price, dec)}</td>
